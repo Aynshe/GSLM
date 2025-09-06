@@ -1,0 +1,62 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  contents: write  # nécessaire pour créer/mettre à jour des releases
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore GameStoreLibraryManager/GameStoreLibraryManager.csproj
+        shell: pwsh
+
+      - name: Build (Release)
+        run: dotnet build GameStoreLibraryManager/GameStoreLibraryManager.csproj --configuration Release --no-restore
+        shell: pwsh
+
+      - name: Publish (self-contained)
+        run: dotnet publish GameStoreLibraryManager/GameStoreLibraryManager.csproj -c Release -o ./publish
+        shell: pwsh
+
+      - name: Zip publish folder
+        run: Compress-Archive -Path ./publish/* -DestinationPath ./GameStoreLibraryManager.zip -Force
+        shell: pwsh
+
+      # Crée/Met à jour une release "<branche>-latest" et remplace le ZIP à chaque run
+      - name: Create/Update branch-scoped Release (overwrite asset)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $raw = if ($env:GITHUB_EVENT_NAME -eq "pull_request") { $env:GITHUB_HEAD_REF } else { $env:GITHUB_REF_NAME }
+          if (-not $raw) { $raw = "unknown" }
+          $safe = ($raw -replace '[^a-zA-Z0-9._-]', '_')
+          $tag  = "$safe-latest"
+          $zip  = "GameStoreLibraryManager.zip"
+
+          Write-Host "Branch raw: $raw"
+          Write-Host "Release tag: $tag"
+
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "Build from $raw" --notes "Automated build for $raw"
+          } else {
+            gh release edit $tag --title "Build from $raw" --notes "Automated build for $raw" | Out-Null
+          }
+
+          gh release upload $tag $zip --clobber
