@@ -1,0 +1,11 @@
+namespace GameStoreLibraryManager.Steam.ValveKeyValue.Abstraction
+{
+    interface IParsingVisitationListener : IVisitationListener
+    {
+        void DiscardCurrentObject();
+
+        IParsingVisitationListener GetMergeListener();
+
+        IParsingVisitationListener GetAppendListener();
+    }
+}
