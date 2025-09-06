@@ -38,6 +38,9 @@ Before using **Game Store Library Manager**, install:
       ```bash
       GameStoreLibraryManager.exe -menu
       ```
+      
+###  **Prefer enabling one API generation at a time → **save → refresh RetroBat** **"But it is best to run the first API connections and scraping outside of RetroBat (launch GameStoreLibraryManager.exe after enabling an API)!"****
+
 
 - **🔒 Security (recommended)**  
   **DPAPI** option → encrypts tokens and the Steam API key, usable only on the current Windows session.  
