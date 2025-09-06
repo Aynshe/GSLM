@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.60" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118.0" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2420.47" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
+    <PackageReference Include="FlaUI.Core" Version="5.0.0" />
+    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageReference Include="SharpDX" Version="4.2.0" />
+    <PackageReference Include="SharpDX.XInput" Version="4.2.0" />
+  </ItemGroup>
+
+</Project>
