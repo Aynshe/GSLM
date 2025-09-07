@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using GameStoreLibraryManager.Common;
 using Microsoft.Win32;
 using System.Net.Http;
@@ -19,7 +20,7 @@ namespace GameStoreLibraryManager.Epic
 
         private static readonly string[] InstallButtonNames = { "Install", "Installer", "Instalar", "Installieren", "Installa", "Установить", "安装", "安裝", "インストール", "설치" };
 
-        public static bool TryInstallFirstGame(Config config, SimpleLogger logger, string[] args)
+        public static async Task<bool> TryInstallFirstGame(Config config, SimpleLogger logger, string[] args)
         {
             s_AutomationCompleted = false;
             try
@@ -30,7 +31,7 @@ namespace GameStoreLibraryManager.Epic
                 logger.Log("[InstallAutomation][Epic] Scanning for 'Install' button...");
                 using var notice = InstallNoticeWindow.ShowTopMost("Please wait, automatic installation...", autoClose: null, keepShowingWhile: () => !s_AutomationCompleted);
 
-                if (!WaitForEpicLauncher(logger)) return false;
+                if (!await WaitForEpicLauncherAsync(logger)) return false;
 
                 bool clicked = false;
                 var clickDeadline = DateTime.UtcNow + TimeSpan.FromMinutes(2);
@@ -64,7 +65,7 @@ namespace GameStoreLibraryManager.Epic
                             dumpDir
                         );
                     }
-                    if (!clicked) Thread.Sleep(300);
+                    if (!clicked) await Task.Delay(300);
                 }
 
                 if (!clicked)
@@ -78,14 +79,14 @@ namespace GameStoreLibraryManager.Epic
                 notice.MoveToCenter();
                 notice.UpdateText("Installation in progress, please wait...");
 
-                bool isInstalled = WaitForInstallCompletion(gameId, logger);
+                bool isInstalled = await WaitForInstallCompletionAsync(gameId, logger);
 
                 if (isInstalled)
                 {
                     logger.Log($"[InstallAutomation][Epic] Game '{gameId}' successfully installed.");
 
                     notice.UpdateText("Game installed! Waiting for Epic Games to close...");
-                    Thread.Sleep(TimeSpan.FromSeconds(10));
+                    await Task.Delay(TimeSpan.FromSeconds(10));
 
                     try
                     {
@@ -107,7 +108,6 @@ namespace GameStoreLibraryManager.Epic
                         {
                             notice.UpdateText("The game will now run");
                             logger.Log("[InstallAutomation][Epic] Displaying 'The game will now run' message.");
-                            Thread.Sleep(2000);
 
                             logger.Log($"[InstallAutomation][Epic] Creating shortcut for {gameInfo.Name}.");
                             ShortcutManager.CreateShortcut(gameInfo, config);
@@ -122,15 +122,20 @@ namespace GameStoreLibraryManager.Epic
                                     using (var client = new HttpClient())
                                     {
                                         logger.Log("[InstallAutomation][Epic] Sending reload request to http://127.0.0.1:1234/reloadgames");
-                                        var reloadResponse = client.GetAsync("http://127.0.0.1:1234/reloadgames").Result;
+                                        var reloadResponse = await client.GetAsync("http://127.0.0.1:1234/reloadgames");
                                         logger.Log($"[InstallAutomation][Epic] Reload request sent. Status: {reloadResponse.StatusCode}");
 
-                                        logger.Log("[InstallAutomation][Epic] Waiting 5 seconds before launching...");
-                                        Thread.Sleep(5000);
+                                        logger.Log("[InstallAutomation][Epic] Waiting for EmulationStation signal...");
+                                        var signalMessage = await ReloadSignalListener.WaitForSignalAsync(logger);
+
+                                        if (signalMessage == null || !signalMessage.Contains("\"Not Installed\""))
+                                        {
+                                            logger.Log("[InstallAutomation][Epic] Did not receive the correct signal from ES. The game may not launch correctly.");
+                                        }
 
                                         logger.Log($"[InstallAutomation][Epic] Launching game via HTTP POST: {shortcutPath}");
                                         var content = new StringContent(shortcutPath, Encoding.UTF8, "text/plain");
-                                        var response = client.PostAsync("http://127.0.0.1:1234/launch", content).Result;
+                                        var response = await client.PostAsync("http://127.0.0.1:1234/launch", content);
                                         logger.Log($"[InstallAutomation][Epic] Launch request sent. Status: {response.StatusCode}");
                                     }
                                 }
@@ -195,7 +200,7 @@ namespace GameStoreLibraryManager.Epic
             return null;
         }
 
-        private static bool WaitForEpicLauncher(SimpleLogger logger)
+        private static async Task<bool> WaitForEpicLauncherAsync(SimpleLogger logger)
         {
             var fgDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(45);
             logger.Log("[InstallAutomation][Epic] Waiting for Epic Games Launcher to be in the foreground...");
@@ -204,16 +209,16 @@ namespace GameStoreLibraryManager.Epic
                 if (IsEpicInForeground())
                 {
                     logger.Log("[InstallAutomation][Epic] Epic Games Launcher is in the foreground.");
-                    Thread.Sleep(5000); // Grace period for UI to render
+                    await Task.Delay(5000); // Grace period for UI to render
                     return true;
                 }
-                Thread.Sleep(250);
+                await Task.Delay(250);
             }
             logger.Log("[InstallAutomation][Epic] Timed out waiting for Epic Games Launcher.");
             return false;
         }
 
-        private static bool WaitForInstallCompletion(string gameId, SimpleLogger logger)
+        private static async Task<bool> WaitForInstallCompletionAsync(string gameId, SimpleLogger logger)
         {
             var installTimeout = DateTime.UtcNow + TimeSpan.FromMinutes(45);
             while (DateTime.UtcNow < installTimeout)
@@ -228,7 +233,7 @@ namespace GameStoreLibraryManager.Epic
                 {
                     return true;
                 }
-                Thread.Sleep(TimeSpan.FromSeconds(10));
+                await Task.Delay(TimeSpan.FromSeconds(10));
             }
             return false;
         }

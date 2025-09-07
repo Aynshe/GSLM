@@ -11,6 +11,8 @@ namespace GameStoreLibraryManager.Common
         private static string _executablePath;
         private static string _retroBatPath;
 
+        public static string ApplicationRootPath => _retroBatPath ?? _executablePath;
+
         static PathManager()
         {
             _executablePath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);

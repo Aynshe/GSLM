@@ -17,9 +17,6 @@ namespace GameStoreLibraryManager.Common
 
     public static class OcrHelper
     {
-        [ThreadStatic]
-        private static Rectangle? s_RestrictScreenRect;
-
         public static bool TryOcrClickInWindow(IntPtr hwnd, IEnumerable<string> keywords, Action<int,int> click, OcrButtonColor buttonColor = OcrButtonColor.Yellow, Action<string> log = null, string dumpDir = null)
         {
             if (hwnd == IntPtr.Zero || keywords == null) return false;
@@ -53,19 +50,7 @@ namespace GameStoreLibraryManager.Common
                     log?.Invoke($"Fallback capture size: {bmp.Width}x{bmp.Height}");
                 }
 
-                Rectangle? areaBmp = null;
-                if (s_RestrictScreenRect.HasValue)
-                {
-                    var restrict = s_RestrictScreenRect.Value;
-                    var winRect = new Rectangle(left, top, right - left, bottom - top);
-                    var inter = Rectangle.Intersect(restrict, winRect);
-                    if (inter.Width > 0 && inter.Height > 0)
-                    {
-                        areaBmp = new Rectangle(inter.Left - left, inter.Top - top, inter.Width, inter.Height);
-                    }
-                }
-
-                var coloredRegions = FindAllColoredRegions(bmp, buttonColor, log, areaBmp);
+                var coloredRegions = FindAllColoredRegions(bmp, buttonColor, log);
                 if (coloredRegions.Any())
                 {
                     log?.Invoke($"Found {coloredRegions.Count} potential {buttonColor} button regions. Performing OCR on each.");

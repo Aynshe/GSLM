@@ -14,6 +14,7 @@ using GameStoreLibraryManager.HfsPlay;
 using GameStoreLibraryManager.Steam;
 using GameStoreLibraryManager.Auth;
 using GameStoreLibraryManager.Menu;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
@@ -33,6 +34,15 @@ namespace GameStoreLibraryManager
     {
         static void Main(string[] args)
         {
+            // The -esreload command is a lightweight client that must run even if another instance is active.
+            bool isSignalClient = args != null && args.Any(a => string.Equals(a, "-esreload", StringComparison.OrdinalIgnoreCase));
+            if (isSignalClient)
+            {
+                // Don't acquire the mutex, just run the async main method and exit.
+                MainAsync(args).GetAwaiter().GetResult();
+                return;
+            }
+
             var mutex = new System.Threading.Mutex(true, "{8F6F0AC4-B9A1-45fd-A8CF-72F04E6BDE8F}", out bool createdNew);
             if (!createdNew)
             {
@@ -53,6 +63,33 @@ namespace GameStoreLibraryManager
 
         static async Task MainAsync(string[] args)
         {
+            if (args != null && args.Any(a => string.Equals(a, "-esreload", StringComparison.OrdinalIgnoreCase)))
+            {
+                try
+                {
+                    var message = string.Join(" ", args.Where(a => !a.Equals("-esreload", StringComparison.OrdinalIgnoreCase)));
+                    var pipeName = $"GSLM_ReloadSignalPipe_{Environment.UserName}";
+
+                    using (var client = new NamedPipeClientStream(".", pipeName, PipeDirection.Out))
+                    {
+                        // Timeout of 5 seconds to connect to the server
+                        client.Connect(5000);
+                        using (var writer = new StreamWriter(client))
+                        {
+                            writer.Write(message);
+                            writer.Flush();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log to a file in the user directory if something goes wrong, as console output might not be visible.
+                    var errorLogPath = Path.Combine(PathManager.UserDataPath, "esreload_client_error.log");
+                    File.AppendAllText(errorLogPath, $"[{DateTime.Now}] Error in -esreload client: {ex.Message}\n");
+                }
+                return; // Always exit after attempting to send the signal
+            }
+
             // Special mode: installation automation (e.g., called from EmulationStation with %* and -installstore)
             if (args != null && args.Any(a => string.Equals(a, "-installstore", StringComparison.OrdinalIgnoreCase)))
             {
@@ -62,33 +99,29 @@ namespace GameStoreLibraryManager
                 {
                     installLogger.Debug($"[Boot] CommandLine: {Environment.CommandLine}");
                     installLogger.Debug($"[Boot] Args: {string.Join(" ", args ?? Array.Empty<string>())}");
-                }
-                catch { }
 
-                var cfg = new Config();
-                bool steamEnabled = cfg.GetBoolean("steam_enable_install_automation", true);
-                bool amazonEnabled = cfg.GetBoolean("amazon_enable_install_automation", false);
-                bool epicEnabled = cfg.GetBoolean("epic_enable_install_automation", false);
+                    var cfg = new Config();
+                    bool steamEnabled = cfg.GetBoolean("steam_enable_install_automation", true);
+                    bool amazonEnabled = cfg.GetBoolean("amazon_enable_install_automation", false);
+                    bool epicEnabled = cfg.GetBoolean("epic_enable_install_automation", false);
 
-                bool isSteamContext = args.Any(a =>
-                    (!string.IsNullOrEmpty(a)) &&
-                    (a.IndexOf("\\steam\\not installed\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     a.IndexOf("/steam/not installed/", StringComparison.OrdinalIgnoreCase) >= 0));
-                bool isAmazonContext = args.Any(a =>
-                    (!string.IsNullOrEmpty(a)) &&
-                    (a.IndexOf("\\amazon\\not installed\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     a.IndexOf("/amazon/not installed/", StringComparison.OrdinalIgnoreCase) >= 0));
-                bool isEpicContext = args.Any(a =>
-                    (!string.IsNullOrEmpty(a)) &&
-                    (a.IndexOf("\\epic\\not installed\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     a.IndexOf("/epic/not installed/", StringComparison.OrdinalIgnoreCase) >= 0));
-                bool isGogContext = args.Any(a =>
-                    (!string.IsNullOrEmpty(a)) &&
-                    (a.IndexOf("\\gog\\not installed\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     a.IndexOf("/gog/not installed/", StringComparison.OrdinalIgnoreCase) >= 0));
+                    bool isSteamContext = args.Any(a =>
+                        (!string.IsNullOrEmpty(a)) &&
+                        (a.IndexOf("\\steam\\not installed\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         a.IndexOf("/steam/not installed/", StringComparison.OrdinalIgnoreCase) >= 0));
+                    bool isAmazonContext = args.Any(a =>
+                        (!string.IsNullOrEmpty(a)) &&
+                        (a.IndexOf("\\amazon\\not installed\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         a.IndexOf("/amazon/not installed/", StringComparison.OrdinalIgnoreCase) >= 0));
+                    bool isEpicContext = args.Any(a =>
+                        (!string.IsNullOrEmpty(a)) &&
+                        (a.IndexOf("\\epic\\not installed\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         a.IndexOf("/epic/not installed/", StringComparison.OrdinalIgnoreCase) >= 0));
+                    bool isGogContext = args.Any(a =>
+                        (!string.IsNullOrEmpty(a)) &&
+                        (a.IndexOf("\\gog\\not installed\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         a.IndexOf("/gog/not installed/", StringComparison.OrdinalIgnoreCase) >= 0));
 
-                try
-                {
                     if (isGogContext && cfg.GetBoolean("gog_enable_install_automation", false))
                     {
                         string gameId = null;
@@ -125,22 +158,18 @@ namespace GameStoreLibraryManager
                         {
                             installLogger.Log("[GOG] Could not determine gameId for installation.");
                         }
-                        return;
                     }
-                    if (isSteamContext && steamEnabled)
+                    else if (isSteamContext && steamEnabled)
                     {
                         SteamInstallerAutomation.TryInstallFirstGame(cfg, installLogger);
-                        return;
                     }
-                    if (isAmazonContext && amazonEnabled)
+                    else if (isAmazonContext && amazonEnabled)
                     {
-                        Amazon.AmazonInstallerAutomation.TryInstallFirstGame(cfg, installLogger, args);
-                        return;
+                        await Amazon.AmazonInstallerAutomation.TryInstallFirstGame(cfg, installLogger, args);
                     }
-                    if (isEpicContext && epicEnabled)
+                    else if (isEpicContext && epicEnabled)
                     {
-                        EpicInstallerAutomation.TryInstallFirstGame(cfg, installLogger, args);
-                        return;
+                        await EpicInstallerAutomation.TryInstallFirstGame(cfg, installLogger, args);
                     }
                 }
                 catch (Exception ex)
