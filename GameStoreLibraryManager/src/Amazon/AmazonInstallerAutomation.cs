@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using GameStoreLibraryManager.Common;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
@@ -31,7 +32,7 @@ namespace GameStoreLibraryManager.Amazon
             "계속"             // ko
         };
 
-        public static bool TryInstallFirstGame(Config config, SimpleLogger logger, string[] args)
+        public static async Task<bool> TryInstallFirstGame(Config config, SimpleLogger logger, string[] args)
         {
             s_AutomationCompleted = false;
             try
@@ -88,9 +89,9 @@ namespace GameStoreLibraryManager.Amazon
                         logger.Log("[InstallAutomation][Amazon] Amazon Games is foreground.");
                         break;
                     }
-                    Thread.Sleep(250);
+                    await Task.Delay(250);
                 }
-                Thread.Sleep(5000); // Grace period for app to render
+                await Task.Delay(5000); // Grace period for app to render
 
                 var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(2);
                 while (DateTime.UtcNow < deadline)
@@ -169,13 +170,13 @@ namespace GameStoreLibraryManager.Amazon
                                         logger.Log($"[InstallAutomation][Amazon] Error querying SQLite DB: {ex.Message}");
                                     }
                                 }
-                                Thread.Sleep(TimeSpan.FromSeconds(5));
+                                await Task.Delay(TimeSpan.FromSeconds(5));
                             }
 
                             if (isInstalled)
                             {
                                 notice.UpdateText("Game installed! Waiting for Amazon Games to close...");
-                                Thread.Sleep(TimeSpan.FromSeconds(10));
+                                await Task.Delay(TimeSpan.FromSeconds(10));
 
                                 try
                                 {
@@ -197,7 +198,6 @@ namespace GameStoreLibraryManager.Amazon
                                     {
                                         notice.UpdateText("The game will now run");
                                         logger.Log("[InstallAutomation][Amazon] Displaying 'The game will now run' message.");
-                                        Thread.Sleep(2000);
 
                                         logger.Log($"[InstallAutomation][Amazon] Creating shortcut for {gameInfo.Name}.");
                                         ShortcutManager.CreateShortcut(gameInfo, config);
@@ -213,18 +213,21 @@ namespace GameStoreLibraryManager.Amazon
                                                 {
                                                     // Reload game list first, as requested by the user
                                                     logger.Log("[InstallAutomation][Amazon] Sending reload request to http://127.0.0.1:1234/reloadgames");
-                                                    var reloadResponse = client.GetAsync("http://127.0.0.1:1234/reloadgames").Result;
+                                                    var reloadResponse = await client.GetAsync("http://127.0.0.1:1234/reloadgames");
                                                     logger.Log($"[InstallAutomation][Amazon] Reload request sent. Status: {reloadResponse.StatusCode}");
 
-                                                    logger.Log("[InstallAutomation][Amazon] Waiting 5 seconds before launching...");
-                                                    Thread.Sleep(5000);
+                                                    logger.Log("[InstallAutomation][Amazon] Waiting for EmulationStation signal...");
+                                                    var signalMessage = await ReloadSignalListener.WaitForSignalAsync(logger);
+
+                                                    if (signalMessage == null || !signalMessage.Contains("\"Not Installed\""))
+                                                    {
+                                                        logger.Log("[InstallAutomation][Amazon] Did not receive the correct signal from ES. The game may not launch correctly.");
+                                                    }
 
                                                     // Then, launch the game
                                                     logger.Log($"[InstallAutomation][Amazon] Launching game via HTTP POST: {shortcutPath}");
                                                     var content = new StringContent(shortcutPath, Encoding.UTF8, "text/plain");
-                                                    // Using .Result here is a deliberate choice for simplicity in this synchronous context.
-                                                    // The containing method is not async, and this is a fire-and-forget call at the end of the process.
-                                                    var response = client.PostAsync("http://127.0.0.1:1234/launch", content).Result;
+                                                    var response = await client.PostAsync("http://127.0.0.1:1234/launch", content);
                                                     logger.Log($"[InstallAutomation][Amazon] Launch request sent. Status: {response.StatusCode}");
                                                 }
                                             }
@@ -253,7 +256,7 @@ namespace GameStoreLibraryManager.Amazon
                             return isInstalled;
                         }
                     }
-                    Thread.Sleep(300);
+                    await Task.Delay(300);
                 }
             }
             catch (Exception ex)

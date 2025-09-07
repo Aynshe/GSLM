@@ -19,13 +19,10 @@ namespace GameStoreLibraryManager.Gog
 {
     public static class GogInstallerAutomation
     {
-        private static volatile bool s_AutomationCompleted = false;
         private static readonly string[] InstallButtonNames = new[] { "Install", "Installer" };
 
         public static bool TryInstallFirstGame(Config config, SimpleLogger logger, string gameId)
         {
-            s_AutomationCompleted = false;
-
             bool gogAlreadyRunning = Process.GetProcessesByName("GalaxyClient").Any();
             if (!gogAlreadyRunning)
             {
@@ -51,18 +48,20 @@ namespace GameStoreLibraryManager.Gog
                 {
                     logger.Log("[GogInstallAutomation] UI Automation path succeeded.");
                     TrackInstallationProgress(config, logger, gameId, notice).GetAwaiter().GetResult();
-                    s_AutomationCompleted = true;
                     return true;
                 }
                 logger.Debug("[GogInstallAutomation] UI Automation path did not succeed.");
+
+                if (!IsGogProcessRunning())
+                {
+                    logger.Log("[GogInstallAutomation][CRITICAL] GOG Client process is not running after UI automation failure. The installation cannot continue. Aborting GSLM.");
+                    notice?.Dispose();
+                    Environment.Exit(1);
+                }
             }
             catch (Exception ex)
             {
                 logger.Log($"[GogInstallAutomation] UI Automation error: {ex.Message}");
-            }
-            finally
-            {
-                s_AutomationCompleted = true;
             }
 
             return false;
@@ -201,7 +200,6 @@ namespace GameStoreLibraryManager.Gog
                 logger.Log("[GogInstallAutomation] Installation complete.");
 
                 notice.UpdateText("Game installed! Waiting for GOG to close...");
-                await Task.Delay(2000); // Give time for notice to be seen
 
                 // Kill GOG process
                 foreach (var process in Process.GetProcessesByName("GalaxyClient"))
@@ -210,26 +208,20 @@ namespace GameStoreLibraryManager.Gog
                 }
                 logger.Log("[GogInstallAutomation] GOG process terminated.");
 
-                // Create shortcut for the newly installed game
-                try
-                {
-                    var gogLibrary = new GogLibrary(config, logger);
-                    var installedGame = gogLibrary.GetInstalledGames().FirstOrDefault(g => g.Id == gameId);
-                    if (installedGame != null)
-                    {
-                        logger.Log($"[GogInstallAutomation] Creating shortcut for {installedGame.Name}.");
-                        ShortcutManager.CreateShortcut(installedGame, config);
-                    }
-                    else
-                    {
-                        logger.Log($"[GogInstallAutomation] Could not find installed game info for {gameId} to create shortcut.");
-                    }
-                }
-                catch(Exception ex)
-                {
-                    logger.Log($"[GogInstallAutomation] Failed to create shortcut: {ex.Message}");
-                }
+                var gogLibrary = new GogLibrary(config, logger);
+                var installedGame = gogLibrary.GetInstalledGames().FirstOrDefault(g => g.Id == gameId);
+                string sanitizedName = "";
 
+                if (installedGame != null)
+                {
+                    sanitizedName = StringUtils.SanitizeFileName(installedGame.Name);
+                    logger.Log($"[GogInstallAutomation] Creating shortcut for {installedGame.Name}.");
+                    ShortcutManager.CreateShortcut(installedGame, config);
+                }
+                else
+                {
+                    logger.Log($"[GogInstallAutomation] Could not find installed game info for {gameId} to create shortcut.");
+                }
 
                 // Reload localhost service
                 try
@@ -237,38 +229,35 @@ namespace GameStoreLibraryManager.Gog
                     using var client = new HttpClient();
                     var response = await client.GetAsync("http://127.0.0.1:1234/reloadgames");
                     logger.Log($"[GogInstallAutomation] Reload request sent to http://127.0.0.1:1234/reloadgames. Status: {response.StatusCode}");
+                    var signalMessage = await ReloadSignalListener.WaitForSignalAsync(logger);
+                    if (signalMessage == null || !signalMessage.Contains("\"Not Installed\""))
+                    {
+                        logger.Log("[GogInstallAutomation] Did not receive the correct signal from ES. The game may not launch correctly.");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    logger.Log($"[GogInstallAutomation] Failed to send reload request: {ex.Message}");
+                    logger.Log($"[GogInstallAutomation] Failed to send reload request or wait for signal: {ex.Message}");
                 }
 
                 // Execute game if enabled
-                if (config.GetBoolean("gog_execute_game_after_install", false))
+                if (config.GetBoolean("gog_execute_game_after_install", false) && installedGame != null)
                 {
                     notice.UpdateText("The game will now run");
-                    await Task.Delay(2000); // Give time for notice to be seen
 
                     try
                     {
-                        var gogLibrary = new GogLibrary(config, logger);
-                        var installedGame = gogLibrary.GetInstalledGames().FirstOrDefault(g => g.Id == gameId);
-                        if (installedGame != null)
+                        string shortcutPath = Path.Combine(PathManager.GogRomsPath, $"{sanitizedName}.lnk");
+                        if (File.Exists(shortcutPath))
                         {
-                            string sanitizedName = StringUtils.SanitizeFileName(installedGame.Name);
-                            string shortcutPath = Path.Combine(PathManager.GogRomsPath, $"{sanitizedName}.lnk");
-
-                            if (File.Exists(shortcutPath))
-                            {
-                                using var client = new HttpClient();
-                                var content = new StringContent(shortcutPath, Encoding.UTF8, "text/plain");
-                                var response = await client.PostAsync("http://127.0.0.1:1234/launch", content);
-                                logger.Log($"[GogInstallAutomation] Launch request for '{shortcutPath}' sent to http://127.0.0.1:1234/launch. Status: {response.StatusCode}");
-                            }
-                            else
-                            {
-                                logger.Log($"[GogInstallAutomation] Shortcut not found at '{shortcutPath}'. Cannot launch game.");
-                            }
+                            using var client = new HttpClient();
+                            var content = new StringContent(shortcutPath, Encoding.UTF8, "text/plain");
+                            var response = await client.PostAsync("http://127.0.0.1:1234/launch", content);
+                            logger.Log($"[GogInstallAutomation] Launch request for '{shortcutPath}' sent to http://127.0.0.1:1234/launch. Status: {response.StatusCode}");
+                        }
+                        else
+                        {
+                            logger.Log($"[GogInstallAutomation] Shortcut not found at '{shortcutPath}'. Cannot launch game.");
                         }
                     }
                     catch (Exception ex)
