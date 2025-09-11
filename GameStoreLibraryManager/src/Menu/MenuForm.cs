@@ -123,110 +123,179 @@ namespace GameStoreLibraryManager.Menu
         }
 
         private void MenuForm_Load(object sender, EventArgs e)
-{
-    _config = new Config();
-    var settings = _config.GetSettings();
-    _navigableControls = new List<Control>();
-    string currentCategory = "Global";
-
-    _mainPanel.SuspendLayout(); // Suspend layout
-
-    // First Pass: Create and add all controls without setting width
-    foreach (var setting in settings)
-    {
-        if (setting.Key == Config.SectionHeaderKey)
         {
-            currentCategory = setting.Comment;
-            var headerLabel = new Label
+            _config = new Config();
+
+            // Position the form on the correct screen before doing anything else
+            int screenIndex = _config.GetInt("screen_index", 0);
+            Screen[] screens = Screen.AllScreens;
+            if (screenIndex >= 0 && screenIndex < screens.Length)
             {
-                Text = setting.Comment,
-                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(138, 43, 226), // Purple
-                Padding = new Padding(0, 15, 0, 5),
-                Margin = new Padding(0),
-                AutoSize = true // Let label size itself initially
-            };
-            _mainPanel.Controls.Add(headerLabel);
+                this.StartPosition = FormStartPosition.Manual;
+                Screen screen = screens[screenIndex];
+                this.Location = new Point(
+                    screen.WorkingArea.Left + (screen.WorkingArea.Width - this.Width) / 2,
+                    screen.WorkingArea.Top + (screen.WorkingArea.Height - this.Height) / 2
+                );
+            }
+            // If the index is invalid, it will fall back to the Form's default StartPosition, which is CenterScreen.
+
+            var settings = _config.GetSettings();
+            _navigableControls = new List<Control>();
+            string currentCategory = "Global";
+
+            _mainPanel.SuspendLayout(); // Suspend layout
+
+            // First Pass: Create and add all controls without setting width
+            foreach (var setting in settings)
+            {
+                if (setting.Key == Config.SectionHeaderKey)
+                {
+                    currentCategory = setting.Comment;
+                    var headerLabel = new Label
+                    {
+                        Text = setting.Comment,
+                        Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+                        ForeColor = Color.FromArgb(138, 43, 226), // Purple
+                        Padding = new Padding(0, 15, 0, 5),
+                        Margin = new Padding(0),
+                        AutoSize = true // Let label size itself initially
+                    };
+                    _mainPanel.Controls.Add(headerLabel);
+                }
+                else if (setting.Key == "screen_index")
+                {
+                    var settingPanel = new TableLayoutPanel
+                    {
+                        Height = 40,
+                        ColumnCount = 2,
+                        RowCount = 1,
+                        Tag = currentCategory,
+                        BackColor = Color.Transparent,
+                        Margin = new Padding(0)
+                    };
+                    settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                    settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+                    var label = new Label
+                    {
+                        Text = setting.Comment,
+                        Dock = DockStyle.Fill,
+                        TextAlign = ContentAlignment.MiddleLeft,
+                        Font = new Font("Segoe UI", 10F)
+                    };
+
+                    var screenComboBox = new ComboBox
+                    {
+                        Tag = setting.Key,
+                        Anchor = AnchorStyles.Right,
+                        DropDownStyle = ComboBoxStyle.DropDownList,
+                        Width = 350,
+                        Font = new Font("Segoe UI", 10F)
+                    };
+
+                    for (int i = 0; i < screens.Length; i++)
+                    {
+                        screenComboBox.Items.Add($"Screen {i}: {screens[i].DeviceName} ({(screens[i].Primary ? "Primary" : "Secondary")})");
+                    }
+                    if (screenIndex >= 0 && screenIndex < screenComboBox.Items.Count)
+                    {
+                        screenComboBox.SelectedIndex = screenIndex;
+                    }
+
+                    void OnRowEnter(object s, EventArgs ev) => SetHoverHighlight(settingPanel);
+                    void OnRowLeave(object s, EventArgs ev) => ClearHoverHighlight();
+                    settingPanel.MouseEnter += OnRowEnter;
+                    settingPanel.MouseLeave += OnRowLeave;
+                    label.MouseEnter += OnRowEnter;
+                    screenComboBox.MouseEnter += OnRowEnter;
+
+                    screenComboBox.GotFocus += (s, ev) => SetFocusHighlight(screenComboBox);
+                    screenComboBox.LostFocus += (s, ev) => ClearFocusHighlight();
+
+                    screenComboBox.SelectedIndexChanged += (s, ev) => UpdateCategoryLabel(settingPanel);
+
+                    settingPanel.Controls.Add(label, 0, 0);
+                    settingPanel.Controls.Add(screenComboBox, 1, 0);
+                    _mainPanel.Controls.Add(settingPanel);
+                    _navigableControls.Add(screenComboBox);
+                }
+                else if (bool.TryParse(_config.GetString(setting.Key, setting.Value), out bool val))
+                {
+                    var settingPanel = new TableLayoutPanel
+                    {
+                        Height = 40,
+                        ColumnCount = 2,
+                        RowCount = 1,
+                        Tag = currentCategory,
+                        BackColor = Color.Transparent,
+                        Margin = new Padding(0)
+                    };
+                    settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                    settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+                    var label = new Label
+                    {
+                        Text = setting.Comment,
+                        Dock = DockStyle.Fill,
+                        TextAlign = ContentAlignment.MiddleLeft,
+                        Font = new Font("Segoe UI", 10F)
+                    };
+
+                    var toggle = new ModernToggleSwitch
+                    {
+                        Checked = val,
+                        Tag = setting.Key,
+                        Anchor = AnchorStyles.Right
+                    };
+
+                    void OnRowEnter(object s, EventArgs ev) => SetHoverHighlight(settingPanel);
+                    void OnRowLeave(object s, EventArgs ev) => ClearHoverHighlight();
+                    settingPanel.MouseEnter += OnRowEnter;
+                    settingPanel.MouseLeave += OnRowLeave;
+                    label.MouseEnter += OnRowEnter;
+                    toggle.MouseEnter += OnRowEnter;
+
+                    toggle.GotFocus += (s, ev) => SetFocusHighlight(toggle);
+                    toggle.LostFocus += (s, ev) => ClearFocusHighlight();
+
+                    settingPanel.Controls.Add(label, 0, 0);
+                    settingPanel.Controls.Add(toggle, 1, 0);
+                    _mainPanel.Controls.Add(settingPanel);
+                    _navigableControls.Add(toggle);
+                }
+            }
+
+            var spacer = new Panel { Height = 80 }; // Spacer for bottom padding
+            _mainPanel.Controls.Add(spacer);
+
+            _mainPanel.ResumeLayout(true);
+
+            int panelWidth = _mainPanel.ClientSize.Width - _mainPanel.Padding.Horizontal;
+            foreach (Control control in _mainPanel.Controls)
+            {
+                if (control is TableLayoutPanel || (control is Label && control.Font.Bold))
+                {
+                    control.Width = panelWidth;
+                }
+            }
+
+            _saveButton.GotFocus += (s, ev) => SetFocusHighlight(_saveButton);
+            _saveButton.LostFocus += (s, ev) => ClearFocusHighlight();
+            _cancelButton.GotFocus += (s, ev) => SetFocusHighlight(_cancelButton);
+            _cancelButton.LostFocus += (s, ev) => ClearFocusHighlight();
+
+            _navigableControls.Add(_saveButton);
+            _navigableControls.Add(_cancelButton);
+
+            if (_navigableControls.Any())
+            {
+                _navigableControls[0].Focus();
+            }
+
+            InitializeGamepad();
+            this.FormClosing += (s, e) => _gamepadTimer?.Stop();
         }
-        else if (bool.TryParse(_config.GetString(setting.Key, setting.Value), out bool val))
-        {
-            var settingPanel = new TableLayoutPanel
-            {
-                Height = 40,
-                ColumnCount = 2,
-                RowCount = 1,
-                Tag = currentCategory,
-                BackColor = Color.Transparent,
-                Margin = new Padding(0)
-                // Do NOT set Dock or Width here
-            };
-            settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-            var label = new Label
-            {
-                Text = setting.Comment,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Font = new Font("Segoe UI", 10F)
-            };
-
-            var toggle = new ModernToggleSwitch
-            {
-                Checked = val,
-                Tag = setting.Key,
-                Anchor = AnchorStyles.Right
-            };
-
-            void OnRowEnter(object s, EventArgs ev) => SetHoverHighlight(settingPanel);
-            void OnRowLeave(object s, EventArgs ev) => ClearHoverHighlight();
-            settingPanel.MouseEnter += OnRowEnter;
-            settingPanel.MouseLeave += OnRowLeave;
-            label.MouseEnter += OnRowEnter;
-            toggle.MouseEnter += OnRowEnter;
-
-            toggle.GotFocus += (s, ev) => SetFocusHighlight(toggle);
-            toggle.LostFocus += (s, ev) => ClearFocusHighlight();
-
-            settingPanel.Controls.Add(label, 0, 0);
-            settingPanel.Controls.Add(toggle, 1, 0);
-            _mainPanel.Controls.Add(settingPanel);
-            _navigableControls.Add(toggle);
-        }
-    }
-    
-    var spacer = new Panel { Height = 80 }; // Spacer for bottom padding
-    _mainPanel.Controls.Add(spacer);
-
-    _mainPanel.ResumeLayout(true);
-
-    // Second Pass: Set the width of all controls now that the layout is final
-    int panelWidth = _mainPanel.ClientSize.Width - _mainPanel.Padding.Horizontal;
-    foreach (Control control in _mainPanel.Controls)
-    {
-        if (control is TableLayoutPanel || (control is Label && control.Font.Bold))
-        {
-            control.Width = panelWidth;
-        }
-    }
-
-    // Add buttons to navigable list
-    _saveButton.GotFocus += (s, ev) => SetFocusHighlight(_saveButton);
-    _saveButton.LostFocus += (s, ev) => ClearFocusHighlight();
-    _cancelButton.GotFocus += (s, ev) => SetFocusHighlight(_cancelButton);
-    _cancelButton.LostFocus += (s, ev) => ClearFocusHighlight();
-    
-    _navigableControls.Add(_saveButton);
-    _navigableControls.Add(_cancelButton);
-
-    if (_navigableControls.Any())
-    {
-        _navigableControls[0].Focus();
-    }
-
-    InitializeGamepad();
-    this.FormClosing += (s, e) => _gamepadTimer?.Stop();
-}
 
         private void InitializeGamepad()
         {
@@ -375,7 +444,22 @@ namespace GameStoreLibraryManager.Menu
             string categoryText = "";
             if (rowPanel != null)
             {
-                if (rowPanel.Tag is string category)
+                var comboBox = rowPanel.Controls.OfType<ComboBox>().FirstOrDefault();
+                if (comboBox != null && comboBox.Tag.ToString() == "screen_index")
+                {
+                    string category = rowPanel.Tag as string ?? "Display";
+                    int selectedIndex = comboBox.SelectedIndex;
+                    if (selectedIndex >= 0 && selectedIndex < Screen.AllScreens.Length)
+                    {
+                        var screen = Screen.AllScreens[selectedIndex];
+                        categoryText = $"Category: {category}. Info: {screen.DeviceName}";
+                    }
+                    else
+                    {
+                        categoryText = $"Category: {category}";
+                    }
+                }
+                else if (rowPanel.Tag is string category)
                 {
                     categoryText = $"Category: {category}";
                 }
@@ -398,6 +482,10 @@ namespace GameStoreLibraryManager.Menu
             {
                 button.PerformClick();
             }
+            else if (currentControl is ComboBox comboBox)
+            {
+                comboBox.DroppedDown = !comboBox.DroppedDown;
+            }
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -417,22 +505,32 @@ namespace GameStoreLibraryManager.Menu
         private void SaveButton_Click(object sender, EventArgs e)
         {
             var newSettings = new Dictionary<string, string>();
+
+            // Save all settings from the UI controls
             foreach (Control control in _mainPanel.Controls)
             {
-                if (control is TableLayoutPanel settingPanel) // Corrected type check
+                if (control is TableLayoutPanel settingPanel)
                 {
-                    // Find the toggle switch within the panel's controls
                     var toggle = settingPanel.Controls.OfType<ModernToggleSwitch>().FirstOrDefault();
                     if (toggle != null)
                     {
                         newSettings[toggle.Tag.ToString()] = toggle.Checked.ToString().ToLower();
+                    }
+
+                    var comboBox = settingPanel.Controls.OfType<ComboBox>().FirstOrDefault();
+                    if (comboBox != null)
+                    {
+                        if (comboBox.Tag.ToString() == "screen_index")
+                        {
+                            newSettings["screen_index"] = comboBox.SelectedIndex.ToString();
+                        }
+                        // Future-proofing: Add logic for other control types here if needed.
                     }
                 }
             }
 
             _config.SaveSettings(newSettings);
 
-            // Use the new auto-closing message box
             AutoClosingMessageBox.Show(this, "Settings saved successfully!", "Success");
 
             this.DialogResult = DialogResult.OK;

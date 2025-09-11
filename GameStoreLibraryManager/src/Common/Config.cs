@@ -51,7 +51,10 @@ namespace GameStoreLibraryManager.Common
             new ConfigOption { Key = "create_gslm_shortcut", Value = "true", Comment = "Create a shortcut to GSLM settings in each store's roms directory." },
 
             new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Global Options - Security" },
-            new ConfigOption { Key = "enable_dpapi_protection", Value = "false", Comment = "Protect *.token and *.apikey files with Windows DPAPI (CurrentUser)." }
+            new ConfigOption { Key = "enable_dpapi_protection", Value = "false", Comment = "Protect *.token and *.apikey files with Windows DPAPI (CurrentUser)." },
+
+            new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Global Options - Display" },
+            new ConfigOption { Key = "screen_index", Value = "0", Comment = "Index of the screen to display the menu on (0-indexed)." }
         };
 
         public Config()
@@ -134,6 +137,18 @@ namespace GameStoreLibraryManager.Common
             if (_settings.TryGetValue(key, out string value))
             {
                 if (bool.TryParse(value, out bool result))
+                {
+                    return result;
+                }
+            }
+            return defaultValue;
+        }
+
+        public int GetInt(string key, int defaultValue)
+        {
+            if (_settings.TryGetValue(key, out string value))
+            {
+                if (int.TryParse(value, out int result))
                 {
                     return result;
                 }
