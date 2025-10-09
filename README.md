@@ -3,7 +3,7 @@ Game Store Library Manager - plugins for RetroBat
 
 
 # 🎮 RetroBat Plugins – Scraper for Installed and Uninstalled Games  
-*(Steam, Epic, Amazon, GOG)*
+*(Steam, Epic, Amazon/Luna, GOG, XboxLibrary PC/CloudGaming)*
 
 [![.NET 8.0](https://img.shields.io/badge/.NET-8.0-blue?logo=dotnet)](https://dotnet.microsoft.com/en-us/download/dotnet/8.0/runtime)
 [![WebView2](https://img.shields.io/badge/WebView2-required-success?logo=microsoftedge)](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section)
