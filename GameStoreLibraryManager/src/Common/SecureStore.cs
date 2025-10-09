@@ -11,16 +11,28 @@ namespace GameStoreLibraryManager.Common
 
         public static void WriteString(string path, string value, bool protect)
         {
+            var logger = new SimpleLogger("last_scan.log");
             Directory.CreateDirectory(Path.GetDirectoryName(path));
+
             if (!protect)
             {
                 File.WriteAllText(path, value ?? string.Empty, Encoding.UTF8);
                 return;
             }
-            var data = Encoding.UTF8.GetBytes(value ?? string.Empty);
-            var protectedBytes = ProtectedData.Protect(data, null, DataProtectionScope.CurrentUser);
-            var payload = Prefix + Convert.ToBase64String(protectedBytes);
-            File.WriteAllText(path, payload, Encoding.UTF8);
+
+            try
+            {
+                var data = Encoding.UTF8.GetBytes(value ?? string.Empty);
+                var protectedBytes = ProtectedData.Protect(data, null, DataProtectionScope.CurrentUser);
+                var payload = Prefix + Convert.ToBase64String(protectedBytes);
+                File.WriteAllText(path, payload, Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                logger.Log($"[Security] DPAPI protection failed for '{path}'. Falling back to plaintext. Error: {ex.Message}");
+                // Fallback to writing plaintext if DPAPI fails
+                File.WriteAllText(path, value ?? string.Empty, Encoding.UTF8);
+            }
         }
 
         public static string ReadString(string path)

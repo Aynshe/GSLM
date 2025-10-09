@@ -6,6 +6,8 @@ using System.Windows.Forms;
 using GameStoreLibraryManager.Common;
 using System.Security.Cryptography;
 using System.Text;
+using System.Web;
+using GameStoreLibraryManager.Xbox;
 
 namespace GameStoreLibraryManager.Auth
 {
@@ -141,6 +143,31 @@ namespace GameStoreLibraryManager.Auth
                             if (!string.IsNullOrEmpty(code))
                             {
                                 File.WriteAllText(Path.Combine(PathManager.ApiKeyPath, "epic.code"), code);
+                            }
+                        });
+                    }
+                case "xbox":
+                    {
+                        var query = HttpUtility.ParseQueryString(string.Empty);
+                        query.Add("client_id", XboxAccountClient.ClientId);
+                        query.Add("response_type", "code");
+                        query.Add("approval_prompt", "auto");
+                        query.Add("scope", "Xboxlive.signin Xboxlive.offline_access");
+                        query.Add("redirect_uri", "https://login.live.com/oauth20_desktop.srf");
+
+                        var loginUrl = @"https://login.live.com/oauth20_authorize.srf?" + query.ToString();
+                        var codeRegex = new Regex(@"[?&]code=([^&]+)", RegexOptions.IgnoreCase);
+
+                        var form = new AuthBrowserForm("Xbox / Microsoft", loginUrl, codeRegex);
+
+                        return (form, url =>
+                        {
+                            var match = codeRegex.Match(url);
+                            var code = match.Success ? match.Groups[1].Value : null;
+                            if (!string.IsNullOrEmpty(code))
+                            {
+                                Directory.CreateDirectory(PathManager.ApiKeyPath);
+                                File.WriteAllText(Path.Combine(PathManager.ApiKeyPath, "xbox.code"), code);
                             }
                         });
                     }

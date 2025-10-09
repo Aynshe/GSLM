@@ -19,20 +19,20 @@ namespace GameStoreLibraryManager.Common
         {
             new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Steam" },
             new ConfigOption { Key = "steam_import_installed", Value = "false", Comment = "Import installed games from the Steam launcher." },
-            new ConfigOption { Key = "steam_enable_api_generation", Value = "false", Comment = "Automatically open embedded UI to capture Steam API key (steam.apikey)." },
+            new ConfigOption { Key = "steam_enable_api_generation", Value = "false", Comment = "Enable the generation of a Steam authentication token." },
             new ConfigOption { Key = "steam_enable_install_automation", Value = "false", Comment = "Enable UI automation to click 'Install' in Steam install dialog when using -installstore mode." },
             new ConfigOption { Key = "steam_api_delay", Value = "false", Comment = "Add a delay between Steam API calls to avoid rate limiting." },
 
             new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Epic Games" },
             new ConfigOption { Key = "epic_import_installed", Value = "false", Comment = "Import installed games from the Epic Games launcher." },
-            new ConfigOption { Key = "epic_enable_token_generation", Value = "false", Comment = "Automatically open embedded UI to capture Epic authorization code and generate token." },
+            new ConfigOption { Key = "epic_enable_token_generation", Value = "false", Comment = "Enable the generation of an Epic Games authentication token." },
             new ConfigOption { Key = "epic_enable_install_automation", Value = "false", Comment = "Enable UI automation for Epic install dialog when using -installstore mode." },
             new ConfigOption { Key = "epic_use_bat_for_not_installed", Value = "true", Comment = "[Workaround] Create .bat files for non-installed Epic games." },
             new ConfigOption { Key = "epic_execute_game_after_install", Value = "false", Comment = "Execute the game after automatic installation." },
 
             new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "GOG" },
             new ConfigOption { Key = "gog_import_installed", Value = "false", Comment = "Import installed and owned games from the GOG launcher." },
-            new ConfigOption { Key = "gog_enable_token_generation", Value = "false", Comment = "Automatically open embedded UI to capture GOG authorization code and generate token." },
+            new ConfigOption { Key = "gog_enable_token_generation", Value = "false", Comment = "Enable the generation of a GOG authentication token." },
             new ConfigOption { Key = "gog_enable_install_automation", Value = "false", Comment = "Enable UI automation for GOG install dialog when using -installstore mode." },
             new ConfigOption { Key = "gog_execute_game_after_install", Value = "false", Comment = "Execute the game after automatic installation." },
 
@@ -43,6 +43,13 @@ namespace GameStoreLibraryManager.Common
             new ConfigOption { Key = "amazon_use_bat_for_not_installed", Value = "true", Comment = "[Workaround] Create .bat files for non-installed Prime games (Amazon)." },
             new ConfigOption { Key = "amazon_execute_game_after_install", Value = "false", Comment = "Execute the game after automatic installation." },
             new ConfigOption { Key = "enable_luna", Value = "false", Comment = "Enable Amazon Luna synthetic entry and kiosk mode shortcut." },
+
+            new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Xbox" },
+            new ConfigOption { Key = "enable_xbox_library", Value = "false", Comment = "Import installed games from Microsoft Store" },
+            new ConfigOption { Key = "enable_xbox_token_generation", Value = "true", Comment = "Enable the generation of an Xbox authentication token." },
+            new ConfigOption { Key = "enable_xbox_gamepass_catalog", Value = "false", Comment = "Include Game Pass catalog games (requires region to be set)." },
+            new ConfigOption { Key = "xbox_gamepass_region", Value = "US", Comment = "Region code for Game Pass catalog (e.g., US, FR, UK, DE, JP). Only used if enable_xbox_gamepass_catalog is true." },
+            new ConfigOption { Key = "enable_xbox_cloud_gaming", Value = "false", Comment = "Enable Xbox Cloud Gaming synthetic entry and kiosk mode shortcut." },
 
             new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Global Options - Scraping" },
             new ConfigOption { Key = "scrape_media", Value = "false", Comment = "Enable downloading of metadata and media (images, videos, etc.)." },

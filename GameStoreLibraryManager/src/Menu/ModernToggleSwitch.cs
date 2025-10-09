@@ -7,14 +7,20 @@ namespace GameStoreLibraryManager.Menu
 {
     public class ModernToggleSwitch : UserControl
     {
+        public event EventHandler ValueChanged;
+
         private bool _checked = false;
         public bool Checked
         {
             get => _checked;
             set
             {
-                _checked = value;
-                this.Invalidate(); // Redraw the control when the state changes
+                if (_checked != value)
+                {
+                    _checked = value;
+                    this.Invalidate(); // Redraw the control when the state changes
+                    ValueChanged?.Invoke(this, EventArgs.Empty);
+                }
             }
         }
 

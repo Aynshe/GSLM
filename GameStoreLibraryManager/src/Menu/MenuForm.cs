@@ -18,6 +18,7 @@ namespace GameStoreLibraryManager.Menu
         private List<Control> _navigableControls;
         private Panel _focusedRow;
         private Panel _hoveredRow;
+        private Control _regionPanel; // Référence au panneau de sélection de région
         private readonly Color _focusColor = Color.FromArgb(100, 80, 80, 80);
         private readonly Color _hoverColor = Color.FromArgb(50, 80, 80, 80);
         private System.Windows.Forms.Timer _gamepadTimer;
@@ -41,7 +42,6 @@ namespace GameStoreLibraryManager.Menu
         }
 
         private Point _dragStartPoint;
-        private bool _isDragging;
 
         private void InitializeControls()
         {
@@ -126,6 +126,23 @@ namespace GameStoreLibraryManager.Menu
         {
             _config = new Config();
 
+            // Dictionnaire des régions supportées par Game Pass
+            var gamePassRegions = new Dictionary<string, string>
+            {
+                { "US", "United States" },
+                { "FR", "France" },
+                { "GB", "United Kingdom" },
+                { "DE", "Germany" },
+                { "JP", "Japan" },
+                { "CA", "Canada" },
+                { "AU", "Australia" },
+                { "BR", "Brazil" },
+                { "MX", "Mexico" },
+                { "ES", "Spain" },
+                { "IT", "Italy" },
+                { "KR", "South Korea" }
+            };
+
             // Position the form on the correct screen before doing anything else
             int screenIndex = _config.GetInt("screen_index", 0);
             Screen[] screens = Screen.AllScreens;
@@ -162,6 +179,89 @@ namespace GameStoreLibraryManager.Menu
                         AutoSize = true // Let label size itself initially
                     };
                     _mainPanel.Controls.Add(headerLabel);
+                }
+                else if (setting.Key == "xbox_gamepass_region")
+                {
+                    var settingPanel = new TableLayoutPanel
+                    {
+                        Height = 40,
+                        ColumnCount = 2,
+                        RowCount = 1,
+                        Tag = currentCategory,
+                        BackColor = Color.Transparent,
+                        Margin = new Padding(0)
+                    };
+                    settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                    settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+                    var label = new Label
+                    {
+                        Text = setting.Comment,
+                        Dock = DockStyle.Fill,
+                        TextAlign = ContentAlignment.MiddleLeft,
+                        Font = new Font("Segoe UI", 10F)
+                    };
+
+                    var regionComboBox = new ComboBox
+                    {
+                        Tag = setting.Key,
+                        Anchor = AnchorStyles.Right,
+                        DropDownStyle = ComboBoxStyle.DropDownList,
+                        Width = 150,
+                        Font = new Font("Segoe UI", 10F)
+                    };
+
+                    // Ajouter les régions à la liste déroulante
+                    foreach (var region in gamePassRegions)
+                    {
+                        regionComboBox.Items.Add($"{region.Key} - {region.Value}");
+                    }
+
+                    // Sélectionner la région actuelle
+                    string currentRegion = _config.GetString(setting.Key, "US").ToUpper();
+                    bool regionFound = false;
+                    
+                    for (int i = 0; i < regionComboBox.Items.Count; i++)
+                    {
+                        string item = regionComboBox.Items[i].ToString();
+                        if (item.StartsWith(currentRegion + " - "))
+                        {
+                            regionComboBox.SelectedIndex = i;
+                            regionFound = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!regionFound && regionComboBox.Items.Count > 0)
+                    {
+                        // Si la région n'est pas trouvée, sélectionner la première de la liste
+                        regionComboBox.SelectedIndex = 0;
+                        // Mettre à jour la configuration avec la valeur par défaut
+                        var defaultSettings = new Dictionary<string, string>
+                        {
+                            { setting.Key, regionComboBox.Items[0].ToString().Substring(0, 2) }
+                        };
+                        _config.SaveSettings(defaultSettings);
+                    }
+
+                    void OnRowEnter(object s, EventArgs ev) => SetHoverHighlight(settingPanel);
+                    void OnRowLeave(object s, EventArgs ev) => ClearHoverHighlight();
+                    settingPanel.MouseEnter += OnRowEnter;
+                    settingPanel.MouseLeave += OnRowLeave;
+                    label.MouseEnter += OnRowEnter;
+                    regionComboBox.MouseEnter += OnRowEnter;
+
+                    regionComboBox.GotFocus += (s, ev) => SetFocusHighlight(regionComboBox);
+                    regionComboBox.LostFocus += (s, ev) => ClearFocusHighlight();
+                    regionComboBox.SelectedIndexChanged += (s, ev) => UpdateCategoryLabel(settingPanel);
+
+                    settingPanel.Controls.Add(label, 0, 0);
+                    settingPanel.Controls.Add(regionComboBox, 1, 0);
+                    _mainPanel.Controls.Add(settingPanel);
+                    _navigableControls.Add(regionComboBox);
+
+                    // Stocker la référence pour pouvoir la montrer/cacher
+                    _regionPanel = settingPanel;
                 }
                 else if (setting.Key == "screen_index")
                 {
@@ -248,6 +348,9 @@ namespace GameStoreLibraryManager.Menu
                         Tag = setting.Key,
                         Anchor = AnchorStyles.Right
                     };
+
+                    // La liste déroulante est maintenant toujours disponible
+                    // On ne fait plus rien de spécial ici pour la désactiver
 
                     void OnRowEnter(object s, EventArgs ev) => SetHoverHighlight(settingPanel);
                     void OnRowLeave(object s, EventArgs ev) => ClearHoverHighlight();
@@ -520,11 +623,21 @@ namespace GameStoreLibraryManager.Menu
                     var comboBox = settingPanel.Controls.OfType<ComboBox>().FirstOrDefault();
                     if (comboBox != null)
                     {
-                        if (comboBox.Tag.ToString() == "screen_index")
+                        if (comboBox.Tag != null)
                         {
-                            newSettings["screen_index"] = comboBox.SelectedIndex.ToString();
+                            string tag = comboBox.Tag.ToString();
+                            if (tag == "screen_index")
+                            {
+                                newSettings[tag] = comboBox.SelectedIndex.ToString();
+                            }
+                            else if (tag == "xbox_gamepass_region" && comboBox.SelectedItem != null)
+                            {
+                                // Extraire le code de région (les 2 premiers caractères de l'élément sélectionné)
+                                string selectedValue = comboBox.SelectedItem.ToString();
+                                string regionCode = selectedValue.Length >= 2 ? selectedValue.Substring(0, 2) : "US";
+                                newSettings[tag] = regionCode;
+                            }
                         }
-                        // Future-proofing: Add logic for other control types here if needed.
                     }
                 }
             }
@@ -541,16 +654,15 @@ namespace GameStoreLibraryManager.Menu
         {
             if (e.Button == MouseButtons.Left)
             {
-                _isDragging = true;
                 _dragStartPoint = new Point(e.X, e.Y);
             }
         }
 
         private void TitlePanel_MouseMove(object sender, MouseEventArgs e)
         {
-            if (_isDragging)
+            if (_dragStartPoint != Point.Empty)
             {
-                Point p = PointToScreen(e.Location);
+                Point p = PointToScreen(new Point(e.X, e.Y));
                 Location = new Point(p.X - _dragStartPoint.X, p.Y - _dragStartPoint.Y);
             }
         }
@@ -559,8 +671,14 @@ namespace GameStoreLibraryManager.Menu
         {
             if (e.Button == MouseButtons.Left)
             {
-                _isDragging = false;
+                _dragStartPoint = Point.Empty;
             }
+        }
+
+        private void UpdateRegionPanelState(bool isEnabled)
+        {
+            // Ne plus désactiver le panneau de région
+            // La méthode est conservée au cas où elle serait utilisée ailleurs
         }
     }
 }
