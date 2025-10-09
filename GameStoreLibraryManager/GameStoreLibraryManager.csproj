@@ -20,6 +20,11 @@
     <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
     <PackageReference Include="SharpDX" Version="4.2.0" />
     <PackageReference Include="SharpDX.XInput" Version="4.2.0" />
+    <PackageReference Include="System.Security.Principal.Windows" Version="5.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.Windows.SDK.NET.Ref" />
   </ItemGroup>
 
 </Project>

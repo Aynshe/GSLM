@@ -24,5 +24,6 @@ namespace GameStoreLibraryManager.Common
             if (string.IsNullOrEmpty(name)) return "";
             return new string(name.Where(char.IsLetterOrDigit).ToArray()).ToLower();
         }
+
     }
 }

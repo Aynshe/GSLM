@@ -110,6 +110,18 @@ namespace GameStoreLibraryManager.Common
             }
         }
 
+        public static string XboxRomsPath
+        {
+            get
+            {
+                // This now points to the 'windows' system folder for gamelist.xml and media
+                string path = Path.Combine(RomsPath, "windows");
+                if (!Directory.Exists(path))
+                    Directory.CreateDirectory(path);
+                return path;
+            }
+        }
+
         public static string ApiKeyPath
         {
             get

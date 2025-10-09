@@ -12,6 +12,7 @@ using GameStoreLibraryManager.Epic;
 using GameStoreLibraryManager.Gog;
 using GameStoreLibraryManager.HfsPlay;
 using GameStoreLibraryManager.Steam;
+using GameStoreLibraryManager.Xbox;
 using GameStoreLibraryManager.Auth;
 using GameStoreLibraryManager.Menu;
 using System.IO.Pipes;
@@ -193,6 +194,7 @@ namespace GameStoreLibraryManager
 
             // Determine special modes early to avoid showing the splash for direct-run modes
             bool isLunaMode = args != null && args.Any(a => string.Equals(a, "-luna", StringComparison.OrdinalIgnoreCase));
+            bool isXboxCloudGamingMode = args != null && args.Any(a => string.Equals(a, "-xboxcloudgaming", StringComparison.OrdinalIgnoreCase));
             bool isAuthUiMode = args != null && args.Length >= 1 && string.Equals(args[0], "authui", StringComparison.OrdinalIgnoreCase);
             bool isMenuMode = args != null && args.Any(a => string.Equals(a, "-menu", StringComparison.OrdinalIgnoreCase));
 
@@ -218,7 +220,7 @@ namespace GameStoreLibraryManager
                 logger.Log("Initial configuration saved.");
             }
 
-            // Early config read to decide on Luna enablement and cleanup any leftover .bat when disabled
+            // Early config read to decide on feature enablement and cleanup any leftover .bat when disabled
             var earlyConfig = new Config();
             bool lunaEnabled = earlyConfig.GetBoolean("enable_luna", false);
             if (!lunaEnabled)
@@ -237,6 +239,27 @@ namespace GameStoreLibraryManager
                         if (File.Exists(p))
                         {
                             try { File.Delete(p); logger.Log($"[Luna] Deleted disabled Luna shortcut: {Path.GetFileName(p)}"); } catch { }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            bool xboxCloudGamingEnabled = earlyConfig.GetBoolean("enable_xbox_cloud_gaming", false);
+            if (!xboxCloudGamingEnabled)
+            {
+                // Remove leftover Xbox Cloud Gaming shortcut(s) if present in Xbox roms directories
+                try
+                {
+                    var baseName = StringUtils.SanitizeFileName(".Xbox Cloud Gaming");
+                    var installedBat = Path.Combine(PathManager.XboxRomsPath, baseName + ".bat");
+                    var notInstalledDir = Path.Combine(PathManager.XboxRomsPath, "Not Installed");
+                    var notInstalledBat = Path.Combine(notInstalledDir, baseName + ".bat");
+                    foreach (var p in new[] { installedBat, notInstalledBat })
+                    {
+                        if (File.Exists(p))
+                        {
+                            try { File.Delete(p); logger.Log($"[XboxCloud] Deleted disabled Xbox Cloud Gaming shortcut: {Path.GetFileName(p)}"); } catch { }
                         }
                     }
                 }
@@ -275,7 +298,7 @@ namespace GameStoreLibraryManager
 
             // Start splash overlay (centered, borderless, semi-transparent) only for normal startup
             GameStoreLibraryManager.Common.SplashOverlay splash = null;
-            if (!isLunaMode && !isAuthUiMode)
+            if (!isLunaMode && !isXboxCloudGamingMode && !isAuthUiMode)
             {
                 splash = GameStoreLibraryManager.Common.SplashOverlay.Start("Loading online store library...", 0);
             }
@@ -330,6 +353,30 @@ namespace GameStoreLibraryManager
                 return;
             }
 
+            // Special mode: Xbox Cloud Gaming kiosk browser (only if enabled in config)
+            if (isXboxCloudGamingMode)
+            {
+                if (!xboxCloudGamingEnabled)
+                {
+                    logger.Log("[XboxCloud] '-xboxcloudgaming' mode requested but enable_xbox_cloud_gaming=false. Command disabled. Exiting.");
+                    return;
+                }
+                // Default to windowed unless -fullscreen is provided. Allow -windowed to explicitly override.
+                bool fullscreen = args.Any(a => string.Equals(a, "-fullscreen", StringComparison.OrdinalIgnoreCase))
+                                   && !args.Any(a => string.Equals(a, "-windowed", StringComparison.OrdinalIgnoreCase));
+                var t = new Thread(() =>
+                {
+                    Application.EnableVisualStyles();
+                    Application.SetCompatibleTextRenderingDefault(false);
+                    var form = new GameStoreLibraryManager.Xbox.XboxCloudGamingForm(fullscreen: fullscreen);
+                    Application.Run(form);
+                });
+                t.SetApartmentState(ApartmentState.STA);
+                t.Start();
+                t.Join();
+                return;
+            }
+
             // CLI helper: launch embedded auth UI and exit
             if (isAuthUiMode)
             {
@@ -352,10 +399,11 @@ namespace GameStoreLibraryManager
             var steamLibrary = new SteamLibrary(config, logger);
             var gogLibrary = new GogLibrary(config, logger);
             var amazonLibrary = new AmazonLibrary(config, logger);
+            var xboxLibrary = new XboxLibrary(config, logger);
 
             logger.Log("\nFetching game libraries (parallel)...");
             if (splash != null) splash.SetProgress(25);
-            List<LauncherGameInfo> epicGames = null, steamGames = null, gogGames = null, amazonGames = null;
+            List<LauncherGameInfo> epicGames = null, steamGames = null, gogGames = null, amazonGames = null, xboxGames = null;
             var epicTask = Task.Run(async () =>
             {
                 try { epicGames = (await epicLibrary.GetAllGamesAsync()).ToList(); }
@@ -376,8 +424,20 @@ namespace GameStoreLibraryManager
                 try { amazonGames = (await amazonLibrary.GetAllGamesAsync()).ToList(); }
                 catch (Exception ex) { logger.Log($"[Amazon] Fetch failed: {ex.Message}"); amazonGames = new List<LauncherGameInfo>(); }
             });
+            var xboxTask = Task.Run(async () =>
+            {
+                if (config.GetBoolean("enable_xbox_library", false))
+                {
+                    xboxGames = await FetchXboxGamesWithAuthRetryAsync(xboxLibrary, logger, config);
+                }
+                else
+                {
+                    xboxGames = new List<LauncherGameInfo>();
+                    logger.Log("[Xbox] Library is disabled in config. Skipping.");
+                }
+            });
 
-            await Task.WhenAll(epicTask, steamTask, gogTask, amazonTask);
+            await Task.WhenAll(epicTask, steamTask, gogTask, amazonTask, xboxTask);
             if (splash != null) splash.SetProgress(60);
 
             var allGames = new List<LauncherGameInfo>();
@@ -385,6 +445,7 @@ namespace GameStoreLibraryManager
             allGames.AddRange(steamGames);
             allGames.AddRange(gogGames);
             allGames.AddRange(amazonGames);
+            allGames.AddRange(xboxGames);
 
             // Append synthetic Amazon Luna entry (installed) if enabled. ShortcutManager will create a .bat launcher.
             if (config.GetBoolean("enable_luna", false))
@@ -502,6 +563,7 @@ namespace GameStoreLibraryManager
                 await ScrapeMediaForLibrary(steamGames, scraper, gamelistGenerator, downloader, PathManager.SteamRomsPath, logger, config);
                 await ScrapeMediaForLibrary(gogGames, scraper, gamelistGenerator, downloader, PathManager.GogRomsPath, logger, config);
                 await ScrapeMediaForLibrary(amazonGames, scraper, gamelistGenerator, downloader, PathManager.AmazonRomsPath, logger, config);
+                await ScrapeMediaForLibrary(xboxGames, scraper, gamelistGenerator, downloader, PathManager.XboxRomsPath, logger, config);
                 logger.Log("Media scraping complete.");
                 if (splash != null) splash.SetProgress(100);
             }
@@ -624,6 +686,23 @@ namespace GameStoreLibraryManager
                     continue;
                 }
 
+                // Special case: Xbox Cloud Gaming synthetic entry
+                if (game.Launcher == "Xbox" && game.Id == "XBOX_CLOUD_GAMING")
+                {
+                    logger.Log("  Processing '.Xbox Cloud Gaming' (synthetic entry)...");
+                    var details = new GameDetails
+                    {
+                        Description = "Xbox Cloud Gaming (Beta) lets you play hundreds of console games on any device.",
+                        Developer = "Microsoft",
+                        Publisher = "Microsoft",
+                        ReleaseDate = "15 septembre 2020",
+                        MediaUrls = new Dictionary<string, string>()
+                    };
+                    ProcessSyntheticMedia(details, romsPath, StringUtils.SanitizeFileName(game.Name));
+                    allGameDetails[game.Id] = details;
+                    continue;
+                }
+
                 // Special case: Amazon Luna synthetic entry
                 if (game.Launcher == "Amazon" && game.Id == "LUNA")
                 {
@@ -661,7 +740,7 @@ namespace GameStoreLibraryManager
                 {
                     GameDetails gameDetails = null;
 
-                    var canScrapeOnSteam = game.Launcher == "Steam" || game.Launcher == "Epic" || game.Launcher == "GOG" || game.Launcher == "Amazon";
+                    var canScrapeOnSteam = game.Launcher == "Steam" || game.Launcher == "Epic" || game.Launcher == "GOG" || game.Launcher == "Amazon" || game.Launcher == "Xbox";
 
                     if (forceSteamFirst && canScrapeOnSteam)
                     {
@@ -862,6 +941,49 @@ namespace GameStoreLibraryManager
             menuThread.Start();
             menuThread.Join();
             return result;
+        }
+
+        private static async Task<List<LauncherGameInfo>> FetchXboxGamesWithAuthRetryAsync(XboxLibrary xboxLibrary, SimpleLogger logger, Config config)
+        {
+            try
+            {
+                return (await xboxLibrary.GetAllGamesAsync()).ToList();
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message.Contains("Xbox tokens not found"))
+                {
+                    logger.Log("[Xbox] Login required. Launching authentication UI...");
+                    var result = AuthUiLauncher.Run("xbox");
+                    if (result == 0)
+                    {
+                        logger.Log("[Xbox] Auth UI complete. Exchanging code for tokens...");
+                        try
+                        {
+                            var apiClient = new XboxAccountClient(config, logger);
+                            await apiClient.Login();
+
+                            logger.Log("[Xbox] Token exchange complete. Retrying game fetch...");
+                            // After successful login, the tokens are created. Re-fetching should now succeed.
+                            return (await xboxLibrary.GetAllGamesAsync()).ToList();
+                        }
+                        catch (Exception loginEx)
+                        {
+                            logger.Log($"[Xbox] Fetch failed after login attempt: {loginEx.Message}");
+                        }
+                    }
+                    else
+                    {
+                        logger.Log("[Xbox] Authentication was cancelled or failed.");
+                    }
+                }
+                else
+                {
+                    // Log other unexpected errors during the fetch process.
+                    logger.Log($"[Xbox] Fetch failed with an unexpected error: {ex.Message}");
+                }
+                return new List<LauncherGameInfo>();
+            }
         }
     }
 }

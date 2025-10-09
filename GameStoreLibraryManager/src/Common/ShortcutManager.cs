@@ -27,56 +27,36 @@ namespace GameStoreLibraryManager.Common
             }
 
             string romsPath;
-            if (game.Launcher == "Steam")
-                romsPath = PathManager.SteamRomsPath;
-            else if (game.Launcher == "Epic")
-                romsPath = PathManager.EpicRomsPath;
-            else if (game.Launcher == "GOG")
-                romsPath = PathManager.GogRomsPath;
-            else if (game.Launcher == "Amazon")
-                romsPath = PathManager.AmazonRomsPath;
-            else
-                return;
+            if (game.Launcher == "Steam") romsPath = PathManager.SteamRomsPath;
+            else if (game.Launcher == "Epic") romsPath = PathManager.EpicRomsPath;
+            else if (game.Launcher == "GOG") romsPath = PathManager.GogRomsPath;
+            else if (game.Launcher == "Amazon") romsPath = PathManager.AmazonRomsPath;
+            else if (game.Launcher == "Xbox") romsPath = PathManager.XboxRomsPath; // This correctly points to roms/windows
+            else return;
 
             if (!game.IsInstalled)
             {
                 romsPath = Path.Combine(romsPath, "Not Installed");
-                if (!Directory.Exists(romsPath))
-                    Directory.CreateDirectory(romsPath);
+            }
+
+            if (!Directory.Exists(romsPath))
+            {
+                Directory.CreateDirectory(romsPath);
             }
 
             string sanitizedName = StringUtils.SanitizeFileName(game.Name);
 
-            // Handle all synthetic .bat entries first, as per user instruction
             if (game.LauncherUrl != null && game.LauncherUrl.StartsWith("internal://"))
             {
                 if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
 
                 string shortcutArgs = "";
-                if (game.LauncherUrl == "internal://luna")
-                {
-                    shortcutArgs = "-luna -fullscreen";
-                }
-                else if (game.LauncherUrl == "internal://gslm-settings")
-                {
-                    shortcutArgs = "-menu";
-                }
-                else
-                {
-                    return; // Unknown internal protocol
-                }
+                if (game.LauncherUrl == "internal://luna") shortcutArgs = "-luna -fullscreen";
+                else if (game.LauncherUrl == "internal://gslm-settings") shortcutArgs = "-menu";
+                else if (game.LauncherUrl == "internal://xboxcloudgaming") shortcutArgs = "-xboxcloudgaming -fullscreen";
+                else return;
 
-                string fileName;
-                if (game.LauncherUrl == "internal://luna")
-                {
-                    // For Luna, the name is "Amazon Luna", so we must prepend the dot.
-                    fileName = "." + game.Name + ".bat";
-                }
-                else
-                {
-                    // For GSLM, the name is ".GSLM Settings", so it already has the dot.
-                    fileName = game.Name + ".bat";
-                }
+                string fileName = game.LauncherUrl == "internal://luna" ? "." + game.Name + ".bat" : game.Name + ".bat";
                 string shortcutPath = Path.Combine(romsPath, fileName);
 
                 if (File.Exists(shortcutPath)) return;
@@ -84,21 +64,43 @@ namespace GameStoreLibraryManager.Common
                 var exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "GameStoreLibraryManager.exe");
                 string shortcutContent = $"@echo off\r\n\"{exePath}\" {shortcutArgs}\r\n";
                 File.WriteAllText(shortcutPath, shortcutContent, Encoding.UTF8);
-                return; // IMPORTANT: Exit after handling the synthetic entry
+                return;
             }
 
-            // --- Original, working logic for real games ---
-
-            if (game.Launcher == "GOG")
+            if (game.Launcher == "Xbox")
             {
                 if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
 
-                var gogExePath = GogLibrary.GetGalaxyExecutablePath();
-                if (string.IsNullOrEmpty(gogExePath) || !File.Exists(gogExePath))
+                if (game.IsInstalled)
                 {
-                    Console.WriteLine($"[GOG] Could not find GOG Galaxy executable. Cannot create shortcut for {game.Name}");
-                    return;
+                    if (game.LauncherUrl.StartsWith("msgamelaunch://"))
+                    {
+                        var shortcutPath = Path.Combine(romsPath, $"{sanitizedName}.url");
+                        if (File.Exists(shortcutPath)) return;
+                        var shortcutContent = $"[InternetShortcut]\r\nURL={game.LauncherUrl}\r\n";
+                        File.WriteAllText(shortcutPath, shortcutContent, Encoding.UTF8);
+                    }
+                    else if (!string.IsNullOrEmpty(game.LauncherUrl) && File.Exists(game.LauncherUrl))
+                    {
+                        var shortcutPath = Path.Combine(romsPath, $"{sanitizedName}.bat");
+                        if (File.Exists(shortcutPath)) return;
+                        string shortcutContent = $"@echo off\r\n\"{game.LauncherUrl}\"\r\n";
+                        File.WriteAllText(shortcutPath, shortcutContent, Encoding.UTF8);
+                    }
                 }
+                else // Not installed
+                {
+                    var shortcutPath = Path.Combine(romsPath, $"{sanitizedName}.url");
+                    if (File.Exists(shortcutPath)) return;
+                    var shortcutContent = $"[InternetShortcut]\r\nURL={game.LauncherUrl}\r\n";
+                    File.WriteAllText(shortcutPath, shortcutContent, Encoding.UTF8);
+                }
+            }
+            else if (game.Launcher == "GOG")
+            {
+                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
+                var gogExePath = GogLibrary.GetGalaxyExecutablePath();
+                if (string.IsNullOrEmpty(gogExePath) || !File.Exists(gogExePath)) return;
 
                 var shortcutPath = Path.Combine(romsPath, $"{sanitizedName}.lnk");
                 if (File.Exists(shortcutPath)) return;
@@ -116,15 +118,10 @@ namespace GameStoreLibraryManager.Common
                 if (useBatForAmazon)
                 {
                     if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
-
                     shortcutPath = Path.Combine(romsPath, $"{sanitizedName}.bat");
-                    var sb = new StringBuilder();
-                    sb.AppendLine("@echo off");
-                    sb.AppendLine("start \"\" \"amazon-games://\"");
-                    sb.AppendLine("timeout /t 5 /nobreak > NUL");
-                    sb.AppendLine($"start \"\" \"{game.LauncherUrl}\"");
-                    sb.AppendLine("exit");
-                    shortcutContent = sb.ToString();
+                    shortcutContent = $"@echo off\r\nstart \"\" \"amazon-games://\"\r\n" +
+                                      $"timeout /t 5 /nobreak > NUL\r\n" +
+                                      $"start \"\" \"{game.LauncherUrl}\"\r\nexit";
                 }
                 else if (useBatForEpic)
                 {
@@ -134,12 +131,10 @@ namespace GameStoreLibraryManager.Common
                 else
                 {
                     shortcutPath = Path.Combine(romsPath, $"{sanitizedName}.url");
-                    shortcutContent = $"[InternetShortcut]\nURL={game.LauncherUrl}";
+                    shortcutContent = $"[InternetShortcut]\r\nURL={game.LauncherUrl}\r\n";
                 }
 
-                if (File.Exists(shortcutPath))
-                    return;
-
+                if (File.Exists(shortcutPath)) return;
                 File.WriteAllText(shortcutPath, shortcutContent, Encoding.UTF8);
             }
         }
@@ -148,7 +143,6 @@ namespace GameStoreLibraryManager.Common
         {
             var shortcuts = new List<ExistingShortcut>();
 
-            // Steam, Epic, and Amazon use parsing to reconcile
             shortcuts.AddRange(GetShortcutsFromDirectory(PathManager.SteamRomsPath, "Steam", true));
             shortcuts.AddRange(GetShortcutsFromDirectory(Path.Combine(PathManager.SteamRomsPath, "Not Installed"), "Steam", false));
             shortcuts.AddRange(GetShortcutsFromDirectory(PathManager.EpicRomsPath, "Epic", true));
@@ -156,22 +150,27 @@ namespace GameStoreLibraryManager.Common
             shortcuts.AddRange(GetShortcutsFromDirectory(PathManager.AmazonRomsPath, "Amazon", true));
             shortcuts.AddRange(GetShortcutsFromDirectory(Path.Combine(PathManager.AmazonRomsPath, "Not Installed"), "Amazon", false));
 
-            // For GOG, we can't parse .lnk, so we adopt a delete-and-recreate strategy.
-            // We delete all existing .lnk files here, and they will be recreated later in the main loop.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                CleanShortcuts(PathManager.XboxRomsPath, "*.bat");
+                CleanShortcuts(PathManager.XboxRomsPath, "*.url");
+            }
+            shortcuts.AddRange(GetShortcutsFromDirectory(PathManager.XboxRomsPath, "Xbox", true));
+            shortcuts.AddRange(GetShortcutsFromDirectory(Path.Combine(PathManager.XboxRomsPath, "Not Installed"), "Xbox", false));
+
             if (config.GetBoolean("gog_import_installed", true) && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                CleanShortcuts(PathManager.GogRomsPath);
-                CleanShortcuts(Path.Combine(PathManager.GogRomsPath, "Not Installed"));
+                CleanShortcuts(PathManager.GogRomsPath, "*.lnk");
             }
 
             return shortcuts;
         }
 
-        private static void CleanShortcuts(string path)
+        private static void CleanShortcuts(string path, string pattern)
         {
             if (!Directory.Exists(path)) return;
 
-            foreach (var file in Directory.GetFiles(path, "*.lnk"))
+            foreach (var file in Directory.GetFiles(path, pattern))
             {
                 try
                 {
@@ -179,7 +178,7 @@ namespace GameStoreLibraryManager.Common
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Shortcut] Failed to delete stale GOG shortcut {file}: {ex.Message}");
+                    Console.WriteLine($"[Shortcut] Failed to delete stale shortcut {file}: {ex.Message}");
                 }
             }
         }
@@ -187,10 +186,8 @@ namespace GameStoreLibraryManager.Common
         private static List<ExistingShortcut> GetShortcutsFromDirectory(string path, string launcher, bool isInstalled)
         {
             var shortcuts = new List<ExistingShortcut>();
-            if (!Directory.Exists(path))
-                return shortcuts;
+            if (!Directory.Exists(path)) return shortcuts;
 
-            // GOG uses .lnk and is handled by CleanShortcuts, so we don't need to parse them here.
             if (launcher == "GOG") return shortcuts;
 
             var files = Directory.GetFiles(path, "*.url").Concat(Directory.GetFiles(path, "*.bat"));
@@ -200,21 +197,16 @@ namespace GameStoreLibraryManager.Common
                 try
                 {
                     string content = File.ReadAllText(file);
-                    string url = null;
+                    string gameId = null;
                     var extension = Path.GetExtension(file).ToLower();
 
-                    if (extension == ".url")
-                    {
-                        url = GetUrlFromContent(content);
-                    }
-                    else if (extension == ".bat")
-                    {
-                        url = GetUrlFromBatContent(content);
-                    }
+                    string url = null;
+                    if (extension == ".url") url = GetUrlFromContent(content);
+                    else if (extension == ".bat") url = GetUrlFromBatContent(content);
 
                     if (string.IsNullOrEmpty(url)) continue;
 
-                    string gameId = GetGameIdFromUrl(url, launcher);
+                    gameId = GetGameIdFromUrl(url, launcher);
 
                     if (!string.IsNullOrEmpty(gameId))
                     {
@@ -235,15 +227,14 @@ namespace GameStoreLibraryManager.Common
         private static string GetUrlFromBatContent(string content)
         {
             if (string.IsNullOrEmpty(content)) return null;
-            // Match launcher URLs that contain an install/apps/play path, to avoid grabbing a generic launcher start command.
             var match = Regex.Match(content, @"start\s+\""\""\s+\""([^""]+/(?:apps|install|play)/[^""]+)\""");
-            if (match.Success)
-                return match.Groups[1].Value.Trim();
+            if (match.Success) return match.Groups[1].Value.Trim();
 
-            // Fallback for simple bat files
+            match = Regex.Match(content, @"^\""(.+?)\""\s*$", RegexOptions.Multiline);
+            if (match.Success) return match.Groups[1].Value.Trim();
+
             match = Regex.Match(content, @"start\s+\""\""\s+\""(.+?)\""");
-            if (match.Success)
-                return match.Groups[1].Value.Trim();
+            if (match.Success) return match.Groups[1].Value.Trim();
 
             return null;
         }
@@ -252,33 +243,41 @@ namespace GameStoreLibraryManager.Common
         {
             if (string.IsNullOrEmpty(content)) return null;
             var match = Regex.Match(content, @"URL=(.+)");
-            if (match.Success)
-                return match.Groups[1].Value.Trim();
+            if (match.Success) return match.Groups[1].Value.Trim();
             return null;
         }
 
         private static string GetGameIdFromUrl(string url, string launcher)
         {
-            if (string.IsNullOrEmpty(url))
-                return null;
+            if (string.IsNullOrEmpty(url)) return null;
 
             if (launcher == "Steam")
             {
                 var match = Regex.Match(url, @"steam://rungameid/(\d+)");
-                if (match.Success)
-                    return match.Groups[1].Value;
+                if (match.Success) return match.Groups[1].Value;
             }
             else if (launcher == "Epic")
             {
                 var match = Regex.Match(url, @"com\.epicgames\.launcher://apps/([^?]+)");
-                if (match.Success)
-                    return match.Groups[1].Value;
+                if (match.Success) return match.Groups[1].Value;
             }
             else if (launcher == "Amazon")
             {
                 var match = Regex.Match(url, @"amazon-games://(play|install)/([^?]+)");
-                if (match.Success)
-                    return match.Groups[2].Value;
+                if (match.Success) return match.Groups[2].Value;
+            }
+            else if (launcher == "Xbox")
+            {
+                var match = Regex.Match(url, @"ms-windows-store://pdp/\?PFN=([^&]+)");
+                if (match.Success) return match.Groups[1].Value;
+
+                match = Regex.Match(url, @"ms-windows-store://pdp/\?productid=([^&]+)", RegexOptions.IgnoreCase);
+                if (match.Success) return match.Groups[1].Value;
+
+                match = Regex.Match(url, @"msgamelaunch://shortcutLaunch/\?ProductId=([^&]+)", RegexOptions.IgnoreCase);
+                if (match.Success) return match.Groups[1].Value;
+
+                if (File.Exists(url)) return Path.GetFileNameWithoutExtension(url);
             }
 
             return null;

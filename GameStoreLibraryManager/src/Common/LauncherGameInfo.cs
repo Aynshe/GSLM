@@ -13,5 +13,8 @@ namespace GameStoreLibraryManager.Common
         // Epic-specific fields
         public string Namespace { get; set; }
         public string CatalogItemId { get; set; }
+
+        // Dictionnaire pour les métadonnées supplémentaires
+        public Dictionary<string, string> AdditionalData { get; set; } = new Dictionary<string, string>();
     }
 }
