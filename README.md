@@ -75,8 +75,12 @@ Before using **Game Store Library Manager**, install:
   - The plugin manages the **other stores**  
   - **Prerequisite**: enable `localhost:1234` in RetroBat’s developer menu  
 
-- **☁️ Amazon Luna**  
+- **☁️ Launch Amazon Luna**  
   - Integrated support via **WebView2** in a GSLM module  
+
+  - **☁️ Launch Xbox Cloud Gaming** 
+  - Integrated support via **WebView2** in a GSLM module
+  - Xbox Cloud Gaming integration : dynamically create game shortcuts when they are launched from the web portal.
 
 ---
 
