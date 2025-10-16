@@ -36,7 +36,14 @@ namespace GameStoreLibraryManager.Common
 
             if (!game.IsInstalled)
             {
-                romsPath = Path.Combine(romsPath, "Not Installed");
+                if (game.LauncherUrl != null && game.LauncherUrl.StartsWith("internal://xboxcloudgaming-launch/"))
+                {
+                    romsPath = Path.Combine(romsPath, "Cloud Games");
+                }
+                else
+                {
+                    romsPath = Path.Combine(romsPath, "Not Installed");
+                }
             }
 
             if (!Directory.Exists(romsPath))
@@ -54,16 +61,33 @@ namespace GameStoreLibraryManager.Common
                 if (game.LauncherUrl == "internal://luna") shortcutArgs = "-luna -fullscreen";
                 else if (game.LauncherUrl == "internal://gslm-settings") shortcutArgs = "-menu";
                 else if (game.LauncherUrl == "internal://xboxcloudgaming") shortcutArgs = "-xboxcloudgaming -fullscreen";
+                else if (game.LauncherUrl.StartsWith("internal://xboxcloudgaming-launch/"))
+                {
+                    var gameId = game.LauncherUrl.Split('/').Last();
+                    shortcutArgs = $"-xboxcloudgaming -fullscreen -launch {gameId}";
+                }
                 else return;
 
-                string fileName = game.LauncherUrl == "internal://luna" ? "." + game.Name + ".bat" : game.Name + ".bat";
+                string fileName = sanitizedName + ".bat";
+                if (game.LauncherUrl == "internal://luna")
+                {
+                    fileName = "." + fileName;
+                }
                 string shortcutPath = Path.Combine(romsPath, fileName);
 
                 if (File.Exists(shortcutPath)) return;
 
                 var exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "GameStoreLibraryManager.exe");
                 string shortcutContent = $"@echo off\r\n\"{exePath}\" {shortcutArgs}\r\n";
-                File.WriteAllText(shortcutPath, shortcutContent, Encoding.UTF8);
+                try
+                {
+                    File.WriteAllText(shortcutPath, shortcutContent, Encoding.UTF8);
+                    Console.WriteLine($"[Shortcut] Created shortcut for {game.Name} at {shortcutPath}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Shortcut] Failed to create shortcut {shortcutPath}: {ex.Message}");
+                }
                 return;
             }
 
@@ -150,13 +174,9 @@ namespace GameStoreLibraryManager.Common
             shortcuts.AddRange(GetShortcutsFromDirectory(PathManager.AmazonRomsPath, "Amazon", true));
             shortcuts.AddRange(GetShortcutsFromDirectory(Path.Combine(PathManager.AmazonRomsPath, "Not Installed"), "Amazon", false));
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                CleanShortcuts(PathManager.XboxRomsPath, "*.bat");
-                CleanShortcuts(PathManager.XboxRomsPath, "*.url");
-            }
             shortcuts.AddRange(GetShortcutsFromDirectory(PathManager.XboxRomsPath, "Xbox", true));
             shortcuts.AddRange(GetShortcutsFromDirectory(Path.Combine(PathManager.XboxRomsPath, "Not Installed"), "Xbox", false));
+            shortcuts.AddRange(GetShortcutsFromDirectory(Path.Combine(PathManager.XboxRomsPath, "Cloud Games"), "Xbox", false));
 
             if (config.GetBoolean("gog_import_installed", true) && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -206,7 +226,7 @@ namespace GameStoreLibraryManager.Common
 
                     if (string.IsNullOrEmpty(url)) continue;
 
-                    gameId = GetGameIdFromUrl(url, launcher);
+                    gameId = GetGameIdFromUrl(url, launcher, file);
 
                     if (!string.IsNullOrEmpty(gameId))
                     {
@@ -227,7 +247,10 @@ namespace GameStoreLibraryManager.Common
         private static string GetUrlFromBatContent(string content)
         {
             if (string.IsNullOrEmpty(content)) return null;
-            var match = Regex.Match(content, @"start\s+\""\""\s+\""([^""]+/(?:apps|install|play)/[^""]+)\""");
+            var match = Regex.Match(content, @"GameStoreLibraryManager\.exe.*-launch\s+([^\s\""]+)");
+            if (match.Success) return match.Groups[1].Value.Trim();
+
+            match = Regex.Match(content, @"start\s+\""\""\s+\""([^""]+/(?:apps|install|play)/[^""]+)\""");
             if (match.Success) return match.Groups[1].Value.Trim();
 
             match = Regex.Match(content, @"^\""(.+?)\""\s*$", RegexOptions.Multiline);
@@ -247,40 +270,67 @@ namespace GameStoreLibraryManager.Common
             return null;
         }
 
-        private static string GetGameIdFromUrl(string url, string launcher)
+        private static string GetGameIdFromUrl(string url, string launcher, string filePath)
         {
             if (string.IsNullOrEmpty(url)) return null;
+
+            string gameId = null;
 
             if (launcher == "Steam")
             {
                 var match = Regex.Match(url, @"steam://rungameid/(\d+)");
-                if (match.Success) return match.Groups[1].Value;
+                if (match.Success) gameId = match.Groups[1].Value;
             }
             else if (launcher == "Epic")
             {
                 var match = Regex.Match(url, @"com\.epicgames\.launcher://apps/([^?]+)");
-                if (match.Success) return match.Groups[1].Value;
+                if (match.Success) gameId = match.Groups[1].Value;
             }
             else if (launcher == "Amazon")
             {
                 var match = Regex.Match(url, @"amazon-games://(play|install)/([^?]+)");
-                if (match.Success) return match.Groups[2].Value;
+                if (match.Success) gameId = match.Groups[2].Value;
             }
             else if (launcher == "Xbox")
             {
                 var match = Regex.Match(url, @"ms-windows-store://pdp/\?PFN=([^&]+)");
-                if (match.Success) return match.Groups[1].Value;
-
-                match = Regex.Match(url, @"ms-windows-store://pdp/\?productid=([^&]+)", RegexOptions.IgnoreCase);
-                if (match.Success) return match.Groups[1].Value;
-
-                match = Regex.Match(url, @"msgamelaunch://shortcutLaunch/\?ProductId=([^&]+)", RegexOptions.IgnoreCase);
-                if (match.Success) return match.Groups[1].Value;
-
-                if (File.Exists(url)) return Path.GetFileNameWithoutExtension(url);
+                if (match.Success)
+                {
+                    gameId = match.Groups[1].Value;
+                }
+                else
+                {
+                    match = Regex.Match(url, @"ms-windows-store://pdp/\?productid=([^&]+)", RegexOptions.IgnoreCase);
+                    if (match.Success)
+                    {
+                        gameId = match.Groups[1].Value;
+                    }
+                    else
+                    {
+                        match = Regex.Match(url, @"msgamelaunch://shortcutLaunch/\?ProductId=([^&]+)", RegexOptions.IgnoreCase);
+                        if (match.Success)
+                        {
+                            gameId = match.Groups[1].Value;
+                        }
+                        else if (File.Exists(url))
+                        {
+                            gameId = Path.GetFileNameWithoutExtension(url);
+                        }
+                        else if (!url.Contains("://"))
+                        {
+                            // This is not a URL, but the game ID extracted from the bat file content for cloud games
+                            gameId = url;
+                        }
+                    }
+                }
             }
 
-            return null;
+            if (gameId != null && launcher == "Xbox" && filePath.Contains(Path.DirectorySeparatorChar + "Cloud Games" + Path.DirectorySeparatorChar))
+            {
+                return $"{gameId}-cloud";
+            }
+
+            return gameId;
         }
     }
 }

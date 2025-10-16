@@ -4,10 +4,15 @@ using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
+using System;
 using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.Management.Deployment;
 using Windows.ApplicationModel;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Xml;
 
@@ -258,7 +263,8 @@ namespace GameStoreLibraryManager.Xbox
                 {
                     var region = _config.GetString("xbox_gamepass_region", "US");
                     var language = System.Globalization.CultureInfo.CurrentCulture.Name;
-                    var catalogProducts = await _api.GetGamePassCatalogAsync(region, language);
+                    const string pcCatalogId = "fdd9e2a7-0fee-49f6-ad69-4354098401ff";
+                    var catalogProducts = await _api.GetGamePassCatalogAsync(pcCatalogId, region, language);
                     var productIds = catalogProducts.Select(p => p.id).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToArray();
                     var productDetails = await _api.GetProductDetailsAsync(productIds, region, language);
 

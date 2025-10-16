@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
-using GameStoreLibraryManager.HfsPlay;
+using GameStoreLibraryManager.Common;
 using Newtonsoft.Json;
 using HtmlAgilityPack;
 using System.Linq;

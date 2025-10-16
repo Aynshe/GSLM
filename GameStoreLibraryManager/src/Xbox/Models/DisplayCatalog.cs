@@ -31,5 +31,12 @@ namespace GameStoreLibraryManager.Xbox.Models
     public class ProductProperties
     {
         public string PackageFamilyName { get; set; }
+        public List<ProductAttribute> Attributes { get; set; }
+    }
+
+    public class ProductAttribute
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
     }
 }

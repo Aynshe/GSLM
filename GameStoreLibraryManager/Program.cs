@@ -8,6 +8,7 @@ using System.Windows.Forms;
 using System.Xml.Linq;
 using GameStoreLibraryManager.Common;
 using GameStoreLibraryManager.Amazon;
+using GameDetails = GameStoreLibraryManager.Common.GameDetails;
 using GameStoreLibraryManager.Epic;
 using GameStoreLibraryManager.Gog;
 using GameStoreLibraryManager.HfsPlay;
@@ -364,11 +365,19 @@ namespace GameStoreLibraryManager
                 // Default to windowed unless -fullscreen is provided. Allow -windowed to explicitly override.
                 bool fullscreen = args.Any(a => string.Equals(a, "-fullscreen", StringComparison.OrdinalIgnoreCase))
                                    && !args.Any(a => string.Equals(a, "-windowed", StringComparison.OrdinalIgnoreCase));
+
+                string launchGameId = null;
+                var launchIndex = Array.FindIndex(args, a => string.Equals(a, "-launch", StringComparison.OrdinalIgnoreCase));
+                if (launchIndex != -1 && launchIndex + 1 < args.Length)
+                {
+                    launchGameId = args[launchIndex + 1];
+                }
+
                 var t = new Thread(() =>
                 {
                     Application.EnableVisualStyles();
                     Application.SetCompatibleTextRenderingDefault(false);
-                    var form = new GameStoreLibraryManager.Xbox.XboxCloudGamingForm(fullscreen: fullscreen);
+                    var form = new GameStoreLibraryManager.Xbox.XboxCloudGamingForm(fullscreen: fullscreen, gameId: launchGameId);
                     Application.Run(form);
                 });
                 t.SetApartmentState(ApartmentState.STA);
@@ -499,6 +508,12 @@ namespace GameStoreLibraryManager
 
             foreach (var existingShortcut in ShortcutManager.GetAllExistingShortcuts(config))
             {
+                // Skip cleaning for any dynamically created cloud games, as they aren't in the initial `allGames` list.
+                if (existingShortcut.FilePath.Contains(Path.DirectorySeparatorChar + "Cloud Games" + Path.DirectorySeparatorChar))
+                {
+                    continue;
+                }
+
                 if (!newGameLookup.TryGetValue(existingShortcut.Launcher + "_" + existingShortcut.GameId, out var game) || game.IsInstalled != existingShortcut.IsInstalled)
                 {
                     // This shortcut is considered stale. However, we must not delete it if it's an installed game
@@ -556,14 +571,12 @@ namespace GameStoreLibraryManager
             if (config.GetBoolean("scrape_media", false))
             {
                 logger.Log("\nScraping media...");
-                var scraper = new HfsPlayScraper();
                 var gamelistGenerator = new GamelistGenerator(config, logger);
-                var downloader = new MediaDownloader(logger);
-                await ScrapeMediaForLibrary(epicGames, scraper, gamelistGenerator, downloader, PathManager.EpicRomsPath, logger, config, epicLibrary.CurrentToken?.AccessToken);
-                await ScrapeMediaForLibrary(steamGames, scraper, gamelistGenerator, downloader, PathManager.SteamRomsPath, logger, config);
-                await ScrapeMediaForLibrary(gogGames, scraper, gamelistGenerator, downloader, PathManager.GogRomsPath, logger, config);
-                await ScrapeMediaForLibrary(amazonGames, scraper, gamelistGenerator, downloader, PathManager.AmazonRomsPath, logger, config);
-                await ScrapeMediaForLibrary(xboxGames, scraper, gamelistGenerator, downloader, PathManager.XboxRomsPath, logger, config);
+                await ScrapeMediaForLibrary(epicGames, gamelistGenerator, PathManager.EpicRomsPath, logger, config);
+                await ScrapeMediaForLibrary(steamGames, gamelistGenerator, PathManager.SteamRomsPath, logger, config);
+                await ScrapeMediaForLibrary(gogGames, gamelistGenerator, PathManager.GogRomsPath, logger, config);
+                await ScrapeMediaForLibrary(amazonGames, gamelistGenerator, PathManager.AmazonRomsPath, logger, config);
+                await ScrapeMediaForLibrary(xboxGames, gamelistGenerator, PathManager.XboxRomsPath, logger, config);
                 logger.Log("Media scraping complete.");
                 if (splash != null) splash.SetProgress(100);
             }
@@ -619,13 +632,12 @@ namespace GameStoreLibraryManager
             TryCopyAsset("video");
         }
 
-        static async Task ScrapeMediaForLibrary(List<LauncherGameInfo> games, HfsPlayScraper hfsScraper, GamelistGenerator gamelistGenerator, MediaDownloader downloader, string romsPath, SimpleLogger logger, Config config, string accessToken = null)
+        static async Task ScrapeMediaForLibrary(List<LauncherGameInfo> games, GamelistGenerator gamelistGenerator, string romsPath, SimpleLogger logger, Config config)
         {
             if (games == null || !games.Any()) return;
             logger.Log($"Scraping media for {games.Count} games in {romsPath}");
             var allGameDetails = new Dictionary<string, GameDetails>();
-            var steamScraper = new SteamStoreScraper();
-            var forceSteamFirst = config.GetBoolean("force_steam_first", false);
+            var mediaScraper = new MediaScraper(config, logger);
 
             // Load existing gamelist data to make intelligent scraping decisions
             var gamelistPath = Path.Combine(romsPath, "gamelist.xml");
@@ -735,82 +747,10 @@ namespace GameStoreLibraryManager
                     }
                 }
 
-                logger.Log($"  Processing '{game.Name}'...");
-                try
+                var gameDetails = await mediaScraper.ScrapeGameAsync(game, romsPath);
+                if (gameDetails != null)
                 {
-                    GameDetails gameDetails = null;
-
-                    var canScrapeOnSteam = game.Launcher == "Steam" || game.Launcher == "Epic" || game.Launcher == "GOG" || game.Launcher == "Amazon" || game.Launcher == "Xbox";
-
-                    if (forceSteamFirst && canScrapeOnSteam)
-                    {
-                        logger.Log($"  [Force Steam First] Trying Steam Store for '{game.Name}'.");
-                        if (game.Launcher == "Steam")
-                        {
-                            gameDetails = await steamScraper.GetGameDetails(game.Id);
-                        }
-                        else // Epic or GOG
-                        {
-                            var steamAppId = await steamScraper.FindGameByName(game.Name, logger);
-                            if (!string.IsNullOrEmpty(steamAppId))
-                            {
-                                gameDetails = await steamScraper.GetGameDetails(steamAppId);
-                            }
-                        }
-
-                        if (gameDetails == null)
-                        {
-                            logger.Log($"  Steam Store failed or no match found. Falling back to HFSPlay for '{game.Name}'.");
-                            gameDetails = await ScrapeHfsPlay(game, hfsScraper, logger);
-                        }
-                    }
-                    else
-                    {
-                        // Original logic: HFSPlay first
-                        gameDetails = await ScrapeHfsPlay(game, hfsScraper, logger);
-                        if (gameDetails == null && canScrapeOnSteam)
-                        {
-                            logger.Log($"  No suitable match found for '{game.Name}' on HFSPlay. Falling back to Steam Store API.");
-                            if (game.Launcher == "Steam")
-                            {
-                                gameDetails = await steamScraper.GetGameDetails(game.Id);
-                            }
-                            else // Epic or GOG
-                            {
-                                var steamAppId = await steamScraper.FindGameByName(game.Name, logger);
-                                if (!string.IsNullOrEmpty(steamAppId))
-                                {
-                                    gameDetails = await steamScraper.GetGameDetails(steamAppId);
-                                }
-                            }
-                        }
-                    }
-
-                    if (gameDetails != null)
-                    {
-                        var mediaPaths = new Dictionary<string, string>();
-                        foreach (var mediaEntry in gameDetails.MediaUrls)
-                        {
-                            var mediaType = mediaEntry.Key;
-                            var mediaUrl = mediaEntry.Value;
-                            var baseFileName = $"{StringUtils.SanitizeFileName(game.Name)}-{mediaType}";
-                            var subdirectory = (mediaType == "video") ? "videos" : "images";
-                            var baseFilePath = Path.Combine(romsPath, subdirectory, baseFileName);
-
-                            var finalFilePath = await downloader.DownloadMedia(mediaUrl, baseFilePath);
-                            if (!string.IsNullOrEmpty(finalFilePath))
-                            {
-                                mediaPaths[mediaType] = $"./{subdirectory}/{Path.GetFileName(finalFilePath)}";
-                            }
-                        }
-                        gameDetails.MediaUrls = mediaPaths;
-                        allGameDetails[game.Id] = gameDetails;
-                        logger.Log($"    Scraped details for {game.Name}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger.Log($"[Error] Could not scrape or download media for {game.Name}: {ex.Message}");
+                    allGameDetails[game.Id] = gameDetails;
                 }
             }
 
@@ -821,110 +761,6 @@ namespace GameStoreLibraryManager
             var finalPath = Path.Combine(romsPath, "gamelist.xml");
             File.Move(tempPath, finalPath, true);
             logger.Log($"Generated gamelist.xml for {romsPath}");
-        }
-
-        private static async Task<GameDetails> ScrapeHfsPlay(LauncherGameInfo game, HfsPlayScraper scraper, SimpleLogger logger)
-        {
-            var searchResult = await scraper.SearchGame(game.Name);
-            if (searchResult?.Results?.Games?.Results == null) return null;
-
-            var results = searchResult.Results.Games.Results.Where(r => IsModernPlatform(r.System)).ToList();
-            logger.Log($"  Found {results.Count} potential modern platform matches on HFSPlay for '{game.Name}'.");
-
-            var gameResult = results.FirstOrDefault(g => StringUtils.NormalizeName(g.Name) == StringUtils.NormalizeName(game.Name) && g.System == "PC - Personal Computer")
-                             ?? results.FirstOrDefault(g => StringUtils.NormalizeName(g.Name) == StringUtils.NormalizeName(game.Name));
-
-            if (gameResult == null && results.Any())
-            {
-                logger.Log($"  No exact match for '{game.Name}'. Finding best fuzzy match...");
-                gameResult = results
-                    .Select(r => new { Result = r, Distance = LevenshteinDistance(game.Name.ToLower(), r.Name.ToLower()) })
-                    .OrderBy(x => x.Distance)
-                    .FirstOrDefault()?
-                    .Result;
-            }
-
-            if (gameResult != null)
-            {
-                if (LevenshteinDistance(game.Name.ToLower(), gameResult.Name.ToLower()) > 5)
-                {
-                    logger.Log($"  Found match for '{game.Name}' ('{gameResult.Name}') but it is too different. Discarding.");
-                    return null;
-                }
-
-                logger.Log($"  Found primary match for '{game.Name}' on HFSPlay: '{gameResult.Name}' on platform '{gameResult.System}'");
-                var gameDetails = await scraper.GetGameDetails(gameResult.Id, gameResult.Slug);
-
-                var missingMediaTypes = new List<string> { "fanart", "marquee", "video" };
-                missingMediaTypes.RemoveAll(m => gameDetails.MediaUrls.ContainsKey(m));
-                bool missingDescription = string.IsNullOrEmpty(gameDetails.Description);
-
-                if (missingMediaTypes.Any() || missingDescription)
-                {
-                    var missingItemsLog = new List<string>();
-                    if (missingDescription) missingItemsLog.Add("description");
-                    missingItemsLog.AddRange(missingMediaTypes);
-                    logger.Log($"    Missing items for {game.Name}: {string.Join(", ", missingItemsLog)}. Searching other platforms...");
-
-                    var fallbackCandidates = results
-                        .Where(r => r.Id != gameResult.Id && LevenshteinDistance(game.Name.ToLower(), r.Name.ToLower()) < 5)
-                        .ToList();
-
-                    foreach (var fallbackCandidate in fallbackCandidates)
-                    {
-                        if (!missingMediaTypes.Any() && !missingDescription) break;
-                        logger.Log($"    Checking fallback: '{fallbackCandidate.Name}' on '{fallbackCandidate.System}'");
-                        var fallbackDetails = await scraper.GetGameDetails(fallbackCandidate.Id, fallbackCandidate.Slug);
-
-                        if (missingDescription && !string.IsNullOrEmpty(fallbackDetails.Description))
-                        {
-                            logger.Log($"      Found missing description on {fallbackCandidate.System}.");
-                            gameDetails.Description = fallbackDetails.Description;
-                            missingDescription = false;
-                        }
-
-                        foreach (var mediaType in missingMediaTypes.ToList())
-                        {
-                            if (fallbackDetails.MediaUrls.TryGetValue(mediaType, out var mediaUrl))
-                            {
-                                logger.Log($"      Found missing {mediaType} on {fallbackCandidate.System}.");
-                                gameDetails.MediaUrls[mediaType] = mediaUrl;
-                                missingMediaTypes.Remove(mediaType);
-                            }
-                        }
-                    }
-                }
-                return gameDetails;
-            }
-            return null;
-        }
-
-        private static bool IsModernPlatform(string systemName)
-        {
-            if (string.IsNullOrEmpty(systemName)) return false;
-            var lowerSystemName = systemName.ToLower();
-            var modernKeywords = new[] { "pc", "playstation 3", "playstation 4", "playstation 5", "xbox 360", "xbox one", "xbox series", "wii u", "switch" };
-            return modernKeywords.Any(keyword => lowerSystemName.Contains(keyword));
-        }
-
-        public static int LevenshteinDistance(string s, string t)
-        {
-            int n = s.Length;
-            int m = t.Length;
-            int[,] d = new int[n + 1, m + 1];
-            if (n == 0) return m;
-            if (m == 0) return n;
-            for (int i = 0; i <= n; d[i, 0] = i++) ;
-            for (int j = 0; j <= m; d[0, j] = j++) ;
-            for (int i = 1; i <= n; i++)
-            {
-                for (int j = 1; j <= m; j++)
-                {
-                    int cost = (t[j - 1] == s[i - 1]) ? 0 : 1;
-                    d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1), d[i - 1, j - 1] + cost);
-                }
-            }
-            return d[n, m];
         }
 
         private static DialogResult LaunchMenuForm()
