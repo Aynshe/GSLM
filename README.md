@@ -81,6 +81,9 @@ Before using **Game Store Library Manager**, install:
   - **☁️ Launch Xbox Cloud Gaming** 
   - Integrated support via **WebView2** in a GSLM module
   - Xbox Cloud Gaming integration : dynamically create game shortcuts when they are launched from the web portal.
+  It is possible to create a .bat link yourself, the "productid" can be retrieved of the game, for example here it is "9P7ZG9MQKKLN" http://www.xbox.com/fr-FR/games/store/dying-light-the-beast/9P7ZG9MQKKLN/0010.
+  Create a file "Dying Light The Beast.bat" :
+  X:\RetroBat\plugins\GameStoreLibraryManager\GameStoreLibraryManager.exe" -xboxcloudgaming -fullscreen -launch 9P7ZG9MQKKLN
 
 ---
 
