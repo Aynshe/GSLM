@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using GameStoreLibraryManager.Common;
 using System;
+using GameDetails = GameStoreLibraryManager.Common.GameDetails;
 using System.IO;
 
 namespace GameStoreLibraryManager.Steam

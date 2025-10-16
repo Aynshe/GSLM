@@ -180,6 +180,21 @@ namespace GameStoreLibraryManager.Menu
                     };
                     _mainPanel.Controls.Add(headerLabel);
                 }
+                else if (setting.Key == "hfsplay_scraper_media_types")
+                {
+                    var hfsplaySetting = settings.First(s => s.Key == "hfsplay_scraper_media_types");
+                    CreateScraperCheckboxes(hfsplaySetting, currentCategory, _mainPanel);
+
+                    var steamSetting = settings.First(s => s.Key == "steam_scraper_media_types");
+                    CreateScraperCheckboxes(steamSetting, currentCategory, _mainPanel);
+
+                    var gogSetting = settings.First(s => s.Key == "gog_scraper_media_types");
+                    CreateScraperCheckboxes(gogSetting, currentCategory, _mainPanel);
+                }
+                else if (setting.Key.EndsWith("_scraper_media_types"))
+                {
+                    // Do nothing, handled above
+                }
                 else if (setting.Key == "xbox_gamepass_region")
                 {
                     var settingPanel = new TableLayoutPanel
@@ -605,49 +620,151 @@ namespace GameStoreLibraryManager.Menu
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        private void SaveButton_Click(object sender, EventArgs e)
+        private void CreateScraperCheckboxes(Config.ConfigOption setting, string category, Panel parentPanel)
         {
-            var newSettings = new Dictionary<string, string>();
+            var settingPanel = new TableLayoutPanel
+            {
+                Height = 40,
+                ColumnCount = 2,
+                RowCount = 1,
+                Tag = category,
+                BackColor = Color.Transparent,
+                Margin = new Padding(0),
+                Dock = DockStyle.Top
+            };
+            settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150F));
+            settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
 
-            // Save all settings from the UI controls
-            foreach (Control control in _mainPanel.Controls)
+            var label = new Label
+            {
+                Text = setting.Comment.Replace("Media types to scrape from ", "").Replace(", separated by commas.", ""),
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = new Font("Segoe UI", 10F)
+            };
+
+            var checkboxPanel = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                AutoSize = true,
+                Tag = setting.Key,
+                WrapContents = false,
+                Dock = DockStyle.Fill
+            };
+
+            var allPossibleMediaTypes = new Dictionary<string, string[]>
+            {
+                { "hfsplay_scraper_media_types", new[] { "marquee", "image", "fanart", "video" } },
+                { "steam_scraper_media_types", new[] { "marquee", "image", "fanart", "video" } },
+                { "gog_scraper_media_types", new[] { "image", "thumb" } }
+            };
+
+            var mediaTypes = allPossibleMediaTypes.ContainsKey(setting.Key) ? allPossibleMediaTypes[setting.Key] : new string[0];
+            var selectedMediaTypes = _config.GetString(setting.Key, "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            foreach (var mediaType in mediaTypes)
+            {
+                var checkBox = new CheckBox
+                {
+                    Text = mediaType,
+                    Tag = mediaType,
+                    Checked = selectedMediaTypes.Contains(mediaType),
+                    Font = new Font("Segoe UI", 10F),
+                    ForeColor = Color.White,
+                    AutoSize = true
+                };
+                checkBox.CheckedChanged += OnScraperCheckboxChanged;
+                checkboxPanel.Controls.Add(checkBox);
+            }
+
+            settingPanel.Controls.Add(label, 0, 0);
+            settingPanel.Controls.Add(checkboxPanel, 1, 0);
+            parentPanel.Controls.Add(settingPanel);
+        }
+
+        private void OnScraperCheckboxChanged(object sender, EventArgs e)
+        {
+            var changedCheckbox = (CheckBox)sender;
+            if (!changedCheckbox.Checked) return;
+
+            var mediaType = changedCheckbox.Tag.ToString();
+            var parentPanel = (FlowLayoutPanel)changedCheckbox.Parent;
+            var configKey = parentPanel.Tag.ToString();
+
+            foreach (var control in _mainPanel.Controls)
             {
                 if (control is TableLayoutPanel settingPanel)
                 {
-                    var toggle = settingPanel.Controls.OfType<ModernToggleSwitch>().FirstOrDefault();
-                    if (toggle != null)
+                    var flowPanel = settingPanel.Controls.OfType<FlowLayoutPanel>().FirstOrDefault();
+                    if (flowPanel != null && flowPanel.Tag?.ToString() != configKey)
                     {
-                        newSettings[toggle.Tag.ToString()] = toggle.Checked.ToString().ToLower();
-                    }
-
-                    var comboBox = settingPanel.Controls.OfType<ComboBox>().FirstOrDefault();
-                    if (comboBox != null)
-                    {
-                        if (comboBox.Tag != null)
+                        foreach (CheckBox cb in flowPanel.Controls.OfType<CheckBox>())
                         {
-                            string tag = comboBox.Tag.ToString();
-                            if (tag == "screen_index")
+                            if (cb.Tag.ToString() == mediaType)
                             {
-                                newSettings[tag] = comboBox.SelectedIndex.ToString();
-                            }
-                            else if (tag == "xbox_gamepass_region" && comboBox.SelectedItem != null)
-                            {
-                                // Extraire le code de région (les 2 premiers caractères de l'élément sélectionné)
-                                string selectedValue = comboBox.SelectedItem.ToString();
-                                string regionCode = selectedValue.Length >= 2 ? selectedValue.Substring(0, 2) : "US";
-                                newSettings[tag] = regionCode;
+                                cb.Checked = false;
                             }
                         }
                     }
                 }
             }
+        }
 
+        private void SaveButton_Click(object sender, EventArgs e)
+        {
+            var newSettings = new Dictionary<string, string>();
+            CollectSettingsRecursively(_mainPanel, newSettings);
             _config.SaveSettings(newSettings);
-
             AutoClosingMessageBox.Show(this, "Settings saved successfully!", "Success");
-
             this.DialogResult = DialogResult.OK;
             this.Close();
+        }
+
+        private void CollectSettingsRecursively(Control parent, Dictionary<string, string> settings)
+        {
+            foreach (Control control in parent.Controls)
+            {
+                if (control.Tag != null)
+                {
+                    string key = control.Tag.ToString();
+                    if (_config.GetSettings().Any(s => s.Key == key))
+                    {
+                        if (control is ModernToggleSwitch toggle)
+                        {
+                            settings[key] = toggle.Checked.ToString().ToLower();
+                        }
+                        else if (control is ComboBox comboBox)
+                        {
+                            if (key == "screen_index")
+                            {
+                                settings[key] = comboBox.SelectedIndex.ToString();
+                            }
+                            else if (key == "xbox_gamepass_region" && comboBox.SelectedItem != null)
+                            {
+                                string selectedValue = comboBox.SelectedItem.ToString();
+                                string regionCode = selectedValue.Length >= 2 ? selectedValue.Substring(0, 2) : "US";
+                                settings[key] = regionCode;
+                            }
+                        }
+                        else if (control is FlowLayoutPanel checkboxPanel && key.EndsWith("_scraper_media_types"))
+                        {
+                            var selectedTypes = checkboxPanel.Controls.OfType<CheckBox>()
+                                .Where(cb => cb.Checked)
+                                .Select(cb => cb.Tag.ToString());
+                            settings[key] = string.Join(",", selectedTypes);
+                        }
+                    }
+                }
+
+                if (control.HasChildren)
+                {
+                    CollectSettingsRecursively(control, settings);
+                }
+                if (control is GroupBox)
+                {
+                    CollectSettingsRecursively(control, settings);
+                }
+            }
         }
 
         private void TitlePanel_MouseDown(object sender, MouseEventArgs e)

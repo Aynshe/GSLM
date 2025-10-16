@@ -9,6 +9,7 @@ using GameStoreLibraryManager.Auth;
 using GameStoreLibraryManager.Common;
 using GameStoreLibraryManager.Xbox.Models;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System.Linq;
 
 namespace GameStoreLibraryManager.Xbox
@@ -286,10 +287,9 @@ namespace GameStoreLibraryManager.Xbox
             }
         }
 
-        public async Task<List<GamePassCatalogProduct>> GetGamePassCatalogAsync(string region, string language = "en-us")
+        public async Task<List<GamePassCatalogProduct>> GetGamePassCatalogAsync(string catalogId, string region, string language = "en-us")
         {
-            const string catalogApiUrl = "https://catalog.gamepass.com/sigls/v2?id=fdd9e2a7-0fee-49f6-ad69-4354098401ff&language={0}&market={1}";
-            var url = string.Format(catalogApiUrl, language, region);
+            var url = $"https://catalog.gamepass.com/sigls/v2?id={catalogId}&language={language}&market={region}";
 
             using (var client = new HttpClient())
             {
@@ -406,6 +406,26 @@ namespace GameStoreLibraryManager.Xbox
 
             _logger.Log($"[Xbox] {result.Count} product details retrieved out of {productIds.Length} requested.");
             return result;
+        }
+
+        public async Task<JObject> GetGamePassCatalogV1Async(string region, string language)
+        {
+            var url = $"https://catalog.gamepass.microsoft.com/v1.0/{region}/products";
+            _logger.Log($"[Xbox] Fetching Game Pass V1 catalog from: {url}");
+
+            using (var client = new HttpClient())
+            {
+                try
+                {
+                    var response = await client.GetStringAsync(url);
+                    return JObject.Parse(response);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Log($"[Xbox] Error fetching Game Pass V1 catalog: {ex.Message}");
+                    return null;
+                }
+            }
         }
     }
 }

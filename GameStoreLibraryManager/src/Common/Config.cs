@@ -50,12 +50,15 @@ namespace GameStoreLibraryManager.Common
             new ConfigOption { Key = "enable_xbox_gamepass_catalog", Value = "false", Comment = "Include Game Pass catalog games (requires region to be set)." },
             new ConfigOption { Key = "xbox_gamepass_region", Value = "US", Comment = "Region code for Game Pass catalog (e.g., US, FR, UK, DE, JP). Only used if enable_xbox_gamepass_catalog is true." },
             new ConfigOption { Key = "enable_xbox_cloud_gaming", Value = "false", Comment = "Enable Xbox Cloud Gaming synthetic entry and kiosk mode shortcut." },
+            new ConfigOption { Key = "xbox_enable_dynamic_cloud_shortcuts", Value = "true", Comment = "Enable dynamic creation of shortcuts for launched Xbox Cloud games." },
 
-            new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Global Options - Scraping" },
+            new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Scraping" },
             new ConfigOption { Key = "scrape_media", Value = "false", Comment = "Enable downloading of metadata and media (images, videos, etc.)." },
-            new ConfigOption { Key = "force_steam_first", Value = "true", Comment = "Force searching on the Steam store before HFSPlay." },
             new ConfigOption { Key = "rescrape_incomplete_games", Value = "false", Comment = "Force metadata scraping for games that already have some, but incomplete, metadata." },
             new ConfigOption { Key = "create_gslm_shortcut", Value = "true", Comment = "Create a shortcut to GSLM settings in each store's roms directory." },
+            new ConfigOption { Key = "hfsplay_scraper_media_types", Value = "", Comment = "Media types to scrape from HFSPlay, separated by commas." },
+            new ConfigOption { Key = "steam_scraper_media_types", Value = "marquee,fanart,video", Comment = "Media types to scrape from Steam, separated by commas." },
+            new ConfigOption { Key = "gog_scraper_media_types", Value = "image,thumb", Comment = "Media types to scrape from GOG, separated by commas." },
 
             new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Global Options - Security" },
             new ConfigOption { Key = "enable_dpapi_protection", Value = "false", Comment = "Protect *.token and *.apikey files with Windows DPAPI (CurrentUser)." },

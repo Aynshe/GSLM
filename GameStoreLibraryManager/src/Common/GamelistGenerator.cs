@@ -18,6 +18,61 @@ namespace GameStoreLibraryManager.Common
             _logger = logger;
         }
 
+        public void UpdateOrAddGameEntry(string romsPath, LauncherGameInfo game, GameDetails details)
+        {
+            var gamelistPath = Path.Combine(romsPath, "gamelist.xml");
+            XDocument doc;
+            XElement gameListElement;
+
+            try
+            {
+                if (File.Exists(gamelistPath))
+                {
+                    doc = XDocument.Load(gamelistPath);
+                    gameListElement = doc.Root;
+                    if (gameListElement?.Name != "gameList")
+                    {
+                        _logger.Log($"[Gamelist] Root element in {gamelistPath} is not <gameList>. Creating a new gamelist.");
+                        doc = new XDocument(new XElement("gameList"));
+                        gameListElement = doc.Root;
+                    }
+                }
+                else
+                {
+                    doc = new XDocument(new XElement("gameList"));
+                    gameListElement = doc.Root;
+                }
+
+                string sanitizedName = StringUtils.SanitizeFileName(game.Name);
+                string fileExtension = GetFileExtension(game);
+                string fileName = $"{sanitizedName}{fileExtension}";
+                string relativePath = GetRelativePath(game, fileName);
+
+                var existingGame = gameListElement.Elements("game")
+                                                  .FirstOrDefault(g => StringUtils.NormalizeName(g.Element("name")?.Value) == StringUtils.NormalizeName(game.Name));
+
+                if (existingGame != null)
+                {
+                    UpdateElement(existingGame, "path", relativePath); // Ensure path is up-to-date
+                    UpdateGameData(existingGame, game, details);
+                }
+                else
+                {
+                    var newGameElement = new XElement("game");
+                    newGameElement.Add(new XElement("path", relativePath));
+                    UpdateGameData(newGameElement, game, details);
+                    gameListElement.Add(newGameElement);
+                }
+
+                doc.Save(gamelistPath);
+                _logger.Log($"[Gamelist] Updated entry for '{game.Name}' in {gamelistPath}");
+            }
+            catch (Exception ex)
+            {
+                _logger.Log($"[Gamelist] Failed to update gamelist at {gamelistPath}: {ex.Message}");
+            }
+        }
+
         public XDocument GenerateGamelist(string roms_path, List<LauncherGameInfo> games, Dictionary<string, GameDetails> allGameDetails)
         {
             var gamelistPath = Path.Combine(roms_path, "gamelist.xml");
@@ -52,22 +107,12 @@ namespace GameStoreLibraryManager.Common
 
             foreach (var game in games)
             {
-                var gameId = game.Id;
-                var sanitizedName = StringUtils.SanitizeFileName(game.Name);
-                var isLuna = game.Launcher == "Amazon" && string.Equals(game.Id, "LUNA", StringComparison.OrdinalIgnoreCase);
-                var displayName = isLuna ? "." + game.Name : game.Name;
-                var fileNameBase = isLuna ? "." + sanitizedName : sanitizedName;
+                string sanitizedName = StringUtils.SanitizeFileName(game.Name);
+                string fileExtension = GetFileExtension(game);
+                string fileName = $"{sanitizedName}{fileExtension}";
+                string relativePath = GetRelativePath(game, fileName);
 
-                string fileExtension;
-                if (isLuna || game.Name == ".GSLM Settings") fileExtension = ".bat";
-                else if (game.Launcher == "GOG") fileExtension = ".lnk";
-                else if (game.Launcher == "Xbox" && game.IsInstalled && !game.LauncherUrl.StartsWith("msgamelaunch")) fileExtension = ".bat";
-                else fileExtension = ".url";
-
-                string path = game.IsInstalled ? $"./{fileNameBase}{fileExtension}" : $"./Not Installed/{fileNameBase}{fileExtension}";
-
-                string finalName = allGameDetails.TryGetValue(gameId, out var gameDetails) && !string.IsNullOrEmpty(gameDetails.Name) ? gameDetails.Name : displayName;
-                var gameElement = gameList.Elements("game").FirstOrDefault(g => StringUtils.NormalizeName(g.Element("name")?.Value) == StringUtils.NormalizeName(finalName));
+                var gameElement = gameList.Elements("game").FirstOrDefault(g => StringUtils.NormalizeName(g.Element("name")?.Value) == StringUtils.NormalizeName(game.Name));
 
                 if (gameElement == null)
                 {
@@ -75,33 +120,18 @@ namespace GameStoreLibraryManager.Common
                     gameList.Add(gameElement);
                 }
 
-                UpdateElement(gameElement, "path", path);
-                UpdateElement(gameElement, "name", finalName);
-
-                if (gameDetails != null)
-                {
-                    UpdateElement(gameElement, "desc", gameDetails.Description);
-                    UpdateElement(gameElement, "developer", gameDetails.Developer);
-                    UpdateElement(gameElement, "publisher", gameDetails.Publisher);
-                    UpdateElement(gameElement, "releasedate", FormatReleaseDate(gameDetails.ReleaseDate));
-                    if (gameDetails.MediaUrls != null)
-                    {
-                        UpdateElement(gameElement, "image", gameDetails.MediaUrls.GetValueOrDefault("image"));
-                        UpdateElement(gameElement, "video", gameDetails.MediaUrls.GetValueOrDefault("video"));
-                        UpdateElement(gameElement, "marquee", gameDetails.MediaUrls.GetValueOrDefault("marquee"));
-                        UpdateElement(gameElement, "thumbnail", gameDetails.MediaUrls.GetValueOrDefault("thumb"));
-                        UpdateElement(gameElement, "fanart", gameDetails.MediaUrls.GetValueOrDefault("fanart"));
-                    }
-                }
+                UpdateElement(gameElement, "path", relativePath); // Ensure path is always correct
+                GameDetails details = allGameDetails.TryGetValue(game.Id, out var d) ? d : null;
+                UpdateGameData(gameElement, game, details);
             }
 
             if (systemName == "windows")
             {
-                CreateFolderEntry(gameList, roms_path, "./Not Installed", "Not Installed", "Jeux non installés.", "xbox");
+                CreateFolderEntry(gameList, roms_path, "./Not Installed", "Not Installed", "Game not installed.", "xbox");
             }
             else
             {
-                CreateFolderEntry(gameList, roms_path, "./Not Installed", "Not Installed", $"Jeux {systemName} non installés.", systemName.ToLower());
+                CreateFolderEntry(gameList, roms_path, "./Not Installed", "Not Installed", $"Game {systemName} not installed.", systemName.ToLower());
             }
 
             return doc;
@@ -195,6 +225,57 @@ namespace GameStoreLibraryManager.Common
                 return parsedDate.ToString("yyyyMMddTHHmmss");
             }
             return null;
+        }
+
+        private void UpdateGameData(XElement gameElement, LauncherGameInfo game, GameDetails details)
+        {
+            UpdateElement(gameElement, "name", game.Name);
+            UpdateElement(gameElement, "releasedate", "20000101T000000"); // Default release date
+
+            if (details != null)
+            {
+                if (!string.IsNullOrEmpty(details.Description)) UpdateElement(gameElement, "desc", details.Description);
+                if (!string.IsNullOrEmpty(details.Developer)) UpdateElement(gameElement, "developer", details.Developer);
+                if (!string.IsNullOrEmpty(details.Publisher)) UpdateElement(gameElement, "publisher", details.Publisher);
+                if (!string.IsNullOrEmpty(details.ReleaseDate)) UpdateElement(gameElement, "releasedate", details.ReleaseDate);
+
+                foreach (var media in details.MediaUrls)
+                {
+                    UpdateElement(gameElement, media.Key, media.Value);
+                }
+            }
+        }
+
+        private string GetRelativePath(LauncherGameInfo game, string fileName)
+        {
+            if (game.LauncherUrl != null && game.LauncherUrl.StartsWith("internal://xboxcloudgaming-launch/"))
+            {
+                return $"./Cloud Games/{fileName}";
+            }
+            return game.IsInstalled ? $"./{fileName}" : $"./Not Installed/{fileName}";
+        }
+
+        private string GetFileExtension(LauncherGameInfo game)
+        {
+            if (game.LauncherUrl != null && game.LauncherUrl.StartsWith("internal://"))
+            {
+                return ".bat";
+            }
+
+            if (game.Launcher == "GOG")
+            {
+                return ".lnk";
+            }
+
+            if (game.Launcher == "Xbox")
+            {
+                return (game.IsInstalled && game.LauncherUrl.StartsWith("msgamelaunch://")) ? ".url" : ".bat";
+            }
+
+            bool useBatForEpic = game.Launcher == "Epic" && !game.IsInstalled && _config.GetBoolean("epic_use_bat_for_not_installed", true);
+            bool useBatForAmazon = game.Launcher == "Amazon" && !game.IsInstalled && _config.GetBoolean("amazon_use_bat_for_not_installed", true);
+
+            return (useBatForEpic || useBatForAmazon) ? ".bat" : ".url";
         }
     }
 }

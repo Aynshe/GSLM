@@ -42,13 +42,4 @@ namespace GameStoreLibraryManager.HfsPlay
         public HfsPlaySearchResults Results { get; set; }
     }
 
-    public class GameDetails
-    {
-        public string Name { get; set; } // For overriding the display name
-        public string Description { get; set; }
-        public string Developer { get; set; }
-        public string Publisher { get; set; }
-        public string ReleaseDate { get; set; }
-        public Dictionary<string, string> MediaUrls { get; set; }
-    }
 }
