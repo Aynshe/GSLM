@@ -1,6 +1,8 @@
 # GSLM
 Game Store Library Manager - plugins for RetroBat 
 
+Exctact 
+
 
 # 🎮 RetroBat Plugins – Scraper for Installed and Uninstalled Games  
 *(Steam, Epic, Amazon/Luna, GOG, XboxLibrary PC/CloudGaming)*
@@ -18,8 +20,12 @@ Before using **Game Store Library Manager**, install:
 - [Runtime .NET 8.0](https://dotnet.microsoft.com/en-us/download/dotnet/8.0/runtime)  
 - [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section)
 
-💡 **Tip**: create a `prereq.bat` file to automatically open the download pages:
+---
+Open the "https://github.com/Aynshe/GSLM/releases/latest" archive and unzip the folders to the root of RetroBat.
 
+For the first run, you can directly execute "GameStoreLibraryManager.exe." The menu will open to enable the desired features. Be careful, if you enable the "Media Scraping" option, processing times can be very long depending on the number of games on the different stores. It is not recommended to open RetroBat at this point, as this may create duplicate entries in the game lists.
+
+If you don't want GameStoreLibraryManager.exe to run for refresh every time you open RetroBat and every time you update the game list, you need to delete both .bat file \emulationstation\.emulationstation\scripts\start\GameStoreLibraryManager-wait.bat and \emulationstation\.emulationstation\scripts\update-gamelists\GameStoreLibraryManager-wait.bat
 ---
 
 ## ⚙️ Main Features
