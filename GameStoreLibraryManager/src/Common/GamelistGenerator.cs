@@ -241,7 +241,8 @@ namespace GameStoreLibraryManager.Common
 
                 foreach (var media in details.MediaUrls)
                 {
-                    UpdateElement(gameElement, media.Key, media.Value);
+                    var elementName = media.Key == "thumb" ? "thumbnail" : media.Key;
+                    UpdateElement(gameElement, elementName, media.Value);
                 }
             }
         }
