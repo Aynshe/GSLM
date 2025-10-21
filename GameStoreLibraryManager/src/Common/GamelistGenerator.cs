@@ -270,7 +270,9 @@ namespace GameStoreLibraryManager.Common
 
             if (game.Launcher == "Xbox")
             {
-                return (game.IsInstalled && game.LauncherUrl.StartsWith("msgamelaunch://")) ? ".url" : ".bat";
+                // A non-installed Xbox game is a URL to the store.
+                // An installed game is a URL if it's a UWP app, otherwise it might be a .bat for complex launches.
+                return !game.IsInstalled || game.LauncherUrl.StartsWith("msgamelaunch://") ? ".url" : ".bat";
             }
 
             bool useBatForEpic = game.Launcher == "Epic" && !game.IsInstalled && _config.GetBoolean("epic_use_bat_for_not_installed", true);
