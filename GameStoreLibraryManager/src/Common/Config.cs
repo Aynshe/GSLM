@@ -43,6 +43,8 @@ namespace GameStoreLibraryManager.Common
             new ConfigOption { Key = "amazon_use_bat_for_not_installed", Value = "true", Comment = "[Workaround] Create .bat files for non-installed Prime games (Amazon)." },
             new ConfigOption { Key = "amazon_execute_game_after_install", Value = "false", Comment = "Execute the game after automatic installation." },
             new ConfigOption { Key = "enable_luna", Value = "false", Comment = "Enable Amazon Luna synthetic entry and kiosk mode shortcut." },
+            new ConfigOption { Key = "luna_domain", Value = "luna.amazon.com", Comment = "Domain for Amazon Luna (e.g., luna.amazon.com, luna.amazon.fr)." },
+            new ConfigOption { Key = "luna_enable_dynamic_cloud_shortcuts", Value = "true", Comment = "Enable dynamic creation of shortcuts for launched Luna Cloud games." },
 
             new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Xbox" },
             new ConfigOption { Key = "enable_xbox_library", Value = "false", Comment = "Import installed games from Microsoft Store" },

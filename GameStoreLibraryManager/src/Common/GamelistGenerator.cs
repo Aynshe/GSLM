@@ -44,6 +44,10 @@ namespace GameStoreLibraryManager.Common
                 }
 
                 string sanitizedName = StringUtils.SanitizeFileName(game.Name);
+                if (game.Id == "LUNA")
+                {
+                    sanitizedName = "." + sanitizedName;
+                }
                 string fileExtension = GetFileExtension(game);
                 string fileName = $"{sanitizedName}{fileExtension}";
                 string relativePath = GetRelativePath(game, fileName);
@@ -108,6 +112,10 @@ namespace GameStoreLibraryManager.Common
             foreach (var game in games)
             {
                 string sanitizedName = StringUtils.SanitizeFileName(game.Name);
+                if (game.Id == "LUNA")
+                {
+                    sanitizedName = "." + sanitizedName;
+                }
                 string fileExtension = GetFileExtension(game);
                 string fileName = $"{sanitizedName}{fileExtension}";
                 string relativePath = GetRelativePath(game, fileName);
@@ -128,6 +136,11 @@ namespace GameStoreLibraryManager.Common
             if (systemName == "windows")
             {
                 CreateFolderEntry(gameList, roms_path, "./Not Installed", "Not Installed", "Game not installed.", "xbox");
+            }
+            else if (systemName == "amazon")
+            {
+                CreateFolderEntry(gameList, roms_path, "./Not Installed", "Not Installed", $"Game {systemName} not installed.", systemName.ToLower());
+                CreateFolderEntry(gameList, roms_path, "./Luna Games", "Luna Games", "Amazon Luna cloud gaming service.", "luna");
             }
             else
             {
@@ -173,6 +186,9 @@ namespace GameStoreLibraryManager.Common
 
             CopyDefaultAsset($"{themeName}-marquee.png", imageDir);
             UpdateElement(folderElement, "marquee", $"./images/{themeName}-marquee.png");
+
+            CopyDefaultAsset($"{themeName}-thumb.png", imageDir);
+            UpdateElement(folderElement, "thumbnail", $"./images/{themeName}-thumb.png");
 
             CopyDefaultAsset($"{themeName}-fanart.png", imageDir);
             UpdateElement(folderElement, "fanart", $"./images/{themeName}-fanart.png");
@@ -252,6 +268,10 @@ namespace GameStoreLibraryManager.Common
             if (game.LauncherUrl != null && game.LauncherUrl.StartsWith("internal://xboxcloudgaming-launch/"))
             {
                 return $"./Cloud Games/{fileName}";
+            }
+            if (game.LauncherUrl != null && game.LauncherUrl.StartsWith("internal://luna-launch/"))
+            {
+                return $"./Luna Games/{fileName}";
             }
             return game.IsInstalled ? $"./{fileName}" : $"./Not Installed/{fileName}";
         }

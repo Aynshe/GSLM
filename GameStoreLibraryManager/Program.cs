@@ -341,11 +341,19 @@ namespace GameStoreLibraryManager
                 // Default to windowed unless -fullscreen is provided. Allow -windowed to explicitly override.
                 bool fullscreen = args.Any(a => string.Equals(a, "-fullscreen", StringComparison.OrdinalIgnoreCase))
                                    && !args.Any(a => string.Equals(a, "-windowed", StringComparison.OrdinalIgnoreCase));
+
+                string launchGameId = null;
+                var launchIndex = Array.FindIndex(args, a => string.Equals(a, "-launch", StringComparison.OrdinalIgnoreCase));
+                if (launchIndex != -1 && launchIndex + 1 < args.Length)
+                {
+                    launchGameId = args[launchIndex + 1];
+                }
+
                 var t = new Thread(() =>
                 {
                     Application.EnableVisualStyles();
                     Application.SetCompatibleTextRenderingDefault(false);
-                    var form = new GameStoreLibraryManager.Luna.LunaBrowserForm(fullscreen: fullscreen);
+                    var form = new GameStoreLibraryManager.Luna.LunaBrowserForm(fullscreen: fullscreen, gameId: launchGameId);
                     Application.Run(form);
                 });
                 t.SetApartmentState(ApartmentState.STA);
