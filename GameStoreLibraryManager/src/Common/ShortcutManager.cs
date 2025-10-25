@@ -34,7 +34,11 @@ namespace GameStoreLibraryManager.Common
             else if (game.Launcher == "Xbox") romsPath = PathManager.XboxRomsPath; // This correctly points to roms/windows
             else return;
 
-            if (!game.IsInstalled)
+            if (game.LauncherUrl != null && game.LauncherUrl.StartsWith("internal://luna-launch/"))
+            {
+                romsPath = PathManager.LunaGamesRomsPath;
+            }
+            else if (!game.IsInstalled)
             {
                 if (game.LauncherUrl != null && game.LauncherUrl.StartsWith("internal://xboxcloudgaming-launch/"))
                 {
@@ -52,6 +56,10 @@ namespace GameStoreLibraryManager.Common
             }
 
             string sanitizedName = StringUtils.SanitizeFileName(game.Name);
+            if (game.Id == "LUNA")
+            {
+                sanitizedName = "." + sanitizedName;
+            }
 
             if (game.LauncherUrl != null && game.LauncherUrl.StartsWith("internal://"))
             {
@@ -66,13 +74,14 @@ namespace GameStoreLibraryManager.Common
                     var gameId = game.LauncherUrl.Split('/').Last();
                     shortcutArgs = $"-xboxcloudgaming -fullscreen -launch {gameId}";
                 }
+                else if (game.LauncherUrl.StartsWith("internal://luna-launch/"))
+                {
+                    var gameId = game.LauncherUrl.Split('/').Last();
+                    shortcutArgs = $"-luna -fullscreen -launch {gameId}";
+                }
                 else return;
 
                 string fileName = sanitizedName + ".bat";
-                if (game.LauncherUrl == "internal://luna")
-                {
-                    fileName = "." + fileName;
-                }
                 string shortcutPath = Path.Combine(romsPath, fileName);
 
                 if (File.Exists(shortcutPath)) return;
@@ -173,6 +182,7 @@ namespace GameStoreLibraryManager.Common
             shortcuts.AddRange(GetShortcutsFromDirectory(Path.Combine(PathManager.EpicRomsPath, "Not Installed"), "Epic", false));
             shortcuts.AddRange(GetShortcutsFromDirectory(PathManager.AmazonRomsPath, "Amazon", true));
             shortcuts.AddRange(GetShortcutsFromDirectory(Path.Combine(PathManager.AmazonRomsPath, "Not Installed"), "Amazon", false));
+            shortcuts.AddRange(GetShortcutsFromDirectory(PathManager.LunaGamesRomsPath, "Amazon", false));
 
             shortcuts.AddRange(GetShortcutsFromDirectory(PathManager.XboxRomsPath, "Xbox", true));
             shortcuts.AddRange(GetShortcutsFromDirectory(Path.Combine(PathManager.XboxRomsPath, "Not Installed"), "Xbox", false));

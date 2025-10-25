@@ -364,9 +364,6 @@ namespace GameStoreLibraryManager.Menu
                         Anchor = AnchorStyles.Right
                     };
 
-                    // La liste déroulante est maintenant toujours disponible
-                    // On ne fait plus rien de spécial ici pour la désactiver
-
                     void OnRowEnter(object s, EventArgs ev) => SetHoverHighlight(settingPanel);
                     void OnRowLeave(object s, EventArgs ev) => ClearHoverHighlight();
                     settingPanel.MouseEnter += OnRowEnter;
@@ -381,6 +378,52 @@ namespace GameStoreLibraryManager.Menu
                     settingPanel.Controls.Add(toggle, 1, 0);
                     _mainPanel.Controls.Add(settingPanel);
                     _navigableControls.Add(toggle);
+                }
+                else if (setting.Key == "luna_domain")
+                {
+                    var settingPanel = new TableLayoutPanel
+                    {
+                        Height = 40,
+                        ColumnCount = 2,
+                        RowCount = 1,
+                        Tag = currentCategory,
+                        BackColor = Color.Transparent,
+                        Margin = new Padding(0)
+                    };
+                    settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                    settingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+                    var label = new Label
+                    {
+                        Text = setting.Comment,
+                        Dock = DockStyle.Fill,
+                        TextAlign = ContentAlignment.MiddleLeft,
+                        Font = new Font("Segoe UI", 10F)
+                    };
+
+                    var textBox = new TextBox
+                    {
+                        Text = _config.GetString(setting.Key, setting.Value),
+                        Tag = setting.Key,
+                        Anchor = AnchorStyles.Right,
+                        Width = 200,
+                        Font = new Font("Segoe UI", 10F)
+                    };
+
+                    void OnRowEnter(object s, EventArgs ev) => SetHoverHighlight(settingPanel);
+                    void OnRowLeave(object s, EventArgs ev) => ClearHoverHighlight();
+                    settingPanel.MouseEnter += OnRowEnter;
+                    settingPanel.MouseLeave += OnRowLeave;
+                    label.MouseEnter += OnRowEnter;
+                    textBox.MouseEnter += OnRowEnter;
+
+                    textBox.GotFocus += (s, ev) => SetFocusHighlight(textBox);
+                    textBox.LostFocus += (s, ev) => ClearFocusHighlight();
+
+                    settingPanel.Controls.Add(label, 0, 0);
+                    settingPanel.Controls.Add(textBox, 1, 0);
+                    _mainPanel.Controls.Add(settingPanel);
+                    _navigableControls.Add(textBox);
                 }
             }
 
@@ -745,6 +788,10 @@ namespace GameStoreLibraryManager.Menu
                                 string regionCode = selectedValue.Length >= 2 ? selectedValue.Substring(0, 2) : "US";
                                 settings[key] = regionCode;
                             }
+                        }
+                        else if (control is TextBox textBox)
+                        {
+                            settings[key] = textBox.Text;
                         }
                         else if (control is FlowLayoutPanel checkboxPanel && key.EndsWith("_scraper_media_types"))
                         {

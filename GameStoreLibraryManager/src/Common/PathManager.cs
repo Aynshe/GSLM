@@ -54,6 +54,17 @@ namespace GameStoreLibraryManager.Common
             }
         }
 
+        public static string LunaGamesRomsPath
+        {
+            get
+            {
+                string path = Path.Combine(AmazonRomsPath, "Luna Games");
+                if (!Directory.Exists(path))
+                    Directory.CreateDirectory(path);
+                return path;
+            }
+        }
+
         public static string RomsPath
         {
             get
