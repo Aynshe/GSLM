@@ -183,6 +183,57 @@ namespace GameStoreLibraryManager
             }
 
             var logger = new SimpleLogger("last_scan.log");
+            
+            // Force recreation of internal .bat files IF they point to the old executable
+            try
+            {
+                var filesToScan = new[]
+                {
+                    ".GSLM Settings.bat",
+                    ".Amazon Luna.bat",
+                    "Amazon Luna.bat",
+                    ".Xbox Cloud Gaming.bat"
+                };
+
+                var romsPaths = new[]
+                {
+                    PathManager.SteamRomsPath,
+                    Path.Combine(PathManager.SteamRomsPath, "Not Installed"),
+                    PathManager.EpicRomsPath,
+                    Path.Combine(PathManager.EpicRomsPath, "Not Installed"),
+                    PathManager.GogRomsPath,
+                    Path.Combine(PathManager.GogRomsPath, "Not Installed"),
+                    PathManager.AmazonRomsPath,
+                    Path.Combine(PathManager.AmazonRomsPath, "Not Installed"),
+                    PathManager.XboxRomsPath,
+                    Path.Combine(PathManager.XboxRomsPath, "Not Installed")
+                };
+
+                foreach (var path in romsPaths)
+                {
+                    if (string.IsNullOrEmpty(path) || !Directory.Exists(path)) continue;
+                    foreach (var file in filesToScan)
+                    {
+                        var filePath = Path.Combine(path, file);
+                        if (File.Exists(filePath))
+                        {
+                            try
+                            {
+                                var content = File.ReadAllText(filePath);
+                                // Delete the file only if it contains a call to the old executable name
+                                if (content.IndexOf("GameStoreLibraryManager.exe", StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    File.Delete(filePath);
+                                    logger.Log($"[Cleanup] Deleted outdated shortcut to force recreation: {file}");
+                                }
+                            }
+                            catch {}
+                        }
+                    }
+                }
+            }
+            catch {}
+
             // Debug: capture raw command line and args for normal mode
             try
             {
