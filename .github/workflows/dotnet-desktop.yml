@@ -21,16 +21,20 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Restore
-        run: dotnet restore GameStoreLibraryManager/GameStoreLibraryManager.csproj
+      - name: Restore Solution
+        run: dotnet restore GameStoreLibraryManager.sln
         shell: pwsh
 
-      - name: Build (Release)
-        run: dotnet build GameStoreLibraryManager/GameStoreLibraryManager.csproj --configuration Release --no-restore
+      - name: Build Solution (Release)
+        run: dotnet build GameStoreLibraryManager.sln --configuration Release --no-restore
         shell: pwsh
 
-      - name: Publish (self-contained)
+      - name: Publish Main App
         run: dotnet publish GameStoreLibraryManager/GameStoreLibraryManager.csproj -c Release -o ./publish
+        shell: pwsh
+
+      - name: Publish Launcher
+        run: dotnet publish LauncherGSLM/LauncherGSLM.csproj -c Release -o ./publish
         shell: pwsh
 
       - name: Zip publish folder
