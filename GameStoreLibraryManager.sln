@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.0.0
+MinimumVisualStudioVersion = 10.0.0.0
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameStoreLibraryManager", "GameStoreLibraryManager\GameStoreLibraryManager.csproj", "{A5E518E9-1D62-46A2-86B5-D3558197A23F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LauncherGSLM", "LauncherGSLM\LauncherGSLM.csproj", "{B4F7C7B0-1C7E-4E6A-8A1D-9B2F5E6B7A8C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A5E518E9-1D62-46A2-86B5-D3558197A23F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A5E518E9-1D62-46A2-86B5-D3558197A23F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A5E518E9-1D62-46A2-86B5-D3558197A23F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A5E518E9-1D62-46A2-86B5-D3558197A23F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4F7C7B0-1C7E-4E6A-8A1D-9B2F5E6B7A8C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4F7C7B0-1C7E-4E6A-8A1D-9B2F5E6B7A8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4F7C7B0-1C7E-4E6A-8A1D-9B2F5E6B7A8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4F7C7B0-1C7E-4E6A-8A1D-9B2F5E6B7A8C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A1B2C3D4-E5F6-7890-1234-567890ABCDEF}
+	EndGlobalSection
+EndGlobal

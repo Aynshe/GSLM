@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ProjectGuid>{B4F7C7B0-1C7E-4E6A-8A1D-9B2F5E6B7A8C}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>LauncherGSLM</AssemblyName>
+  </PropertyGroup>
+</Project>

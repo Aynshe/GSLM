@@ -85,9 +85,17 @@ namespace GameStoreLibraryManager.Common
                 string shortcutPath = Path.Combine(romsPath, fileName);
 
                 if (File.Exists(shortcutPath)) return;
+                
+                // On construit le chemin vers LauncherGSLM.exe, en supposant qu'il est dans le même répertoire
+                // que GameStoreLibraryManager.exe.
+                var mainExePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "GameStoreLibraryManager.exe");
+                var mainExeDir = Path.GetDirectoryName(mainExePath);
+                var launcherExePath = Path.Combine(mainExeDir, "LauncherGSLM.exe");
 
-                var exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "GameStoreLibraryManager.exe");
-                string shortcutContent = $"@echo off\r\n\"{exePath}\" {shortcutArgs}\r\n";
+                // Si LauncherGSLM.exe n'existe pas, on se rabat sur l'ancien comportement par sécurité.
+                var exeToUse = File.Exists(launcherExePath) ? launcherExePath : mainExePath;
+
+                string shortcutContent = $"@echo off\r\n\"{exeToUse}\" {shortcutArgs}\r\n";
                 try
                 {
                     File.WriteAllText(shortcutPath, shortcutContent, Encoding.UTF8);

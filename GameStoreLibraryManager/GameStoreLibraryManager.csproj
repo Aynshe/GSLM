@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <ProjectGuid>{A5E518E9-1D62-46A2-86B5-D3558197A23F}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
