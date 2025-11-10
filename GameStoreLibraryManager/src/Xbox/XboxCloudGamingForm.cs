@@ -24,6 +24,7 @@ namespace GameStoreLibraryManager.Xbox
         private SimpleLogger _logger;
         private readonly HashSet<string> _processedProductIds = new HashSet<string>();
         private MediaScraper _mediaScraper;
+        private GamepadListener _gamepadListener;
 
         public XboxCloudGamingForm(bool fullscreen = true, string gameId = null)
         {
@@ -59,12 +60,43 @@ namespace GameStoreLibraryManager.Xbox
             Directory.CreateDirectory(_userDataFolder);
             _cookieStorePath = Path.Combine(PathManager.ApiKeyPath, "xbox_cloud.cookies");
 
+            _gamepadListener = new GamepadListener();
+            _gamepadListener.ComboDetected += OnGamepadComboDetected;
+
             Load += OnLoadAsync;
             KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
+            FormClosing += async (s, e) => 
+            {
+                _gamepadListener?.Stop();
+                _gamepadListener?.Dispose();
+                try { await SaveCookiesAsync(); } catch { }
+            };
+        }
+
+        private void OnGamepadComboDetected(object sender, EventArgs e)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => OnGamepadComboDetected(sender, e)));
+                return;
+            }
+
+            _gamepadListener.Stop();
+            using (var overlay = new ExitOverlayForm())
+            {
+                overlay.Owner = this;
+                if (overlay.ShowDialog() == DialogResult.OK)
+                {
+                    this.Close();
+                }
+            }
+            _gamepadListener.Start();
         }
 
         private async void OnLoadAsync(object sender, EventArgs e)
         {
+            _gamepadListener.Initialize(this.Handle);
+            _gamepadListener.Start();
             _webView = new WebView2 { Dock = DockStyle.Fill, AllowExternalDrop = false };
             Controls.Add(_webView);
 
@@ -79,12 +111,6 @@ namespace GameStoreLibraryManager.Xbox
             _webView.Source = new Uri(_startUrl);
 
             _webView.CoreWebView2.SourceChanged += CoreWebView2_SourceChanged;
-
-            // Save cookies on close
-            FormClosing += async (_, __) =>
-            {
-                try { await SaveCookiesAsync(); } catch { }
-            };
         }
 
         private async void CoreWebView2_SourceChanged(object sender, CoreWebView2SourceChangedEventArgs e)
