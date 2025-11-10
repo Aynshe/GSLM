@@ -22,6 +22,7 @@ namespace GameStoreLibraryManager.Luna
         private readonly Config _config;
         private readonly SimpleLogger _logger;
         private readonly string _cookieStorePath;
+        private GamepadListener _gamepadListener;
 
         // State for dynamic shortcut creation
         private string _lastDetectedGameId;
@@ -60,13 +61,44 @@ namespace GameStoreLibraryManager.Luna
 
             _enableDynamicShortcuts = _config.GetBoolean("luna_enable_dynamic_cloud_shortcuts", true);
 
+            _gamepadListener = new GamepadListener();
+            _gamepadListener.ComboDetected += OnGamepadComboDetected;
+
             Load += OnLoadAsync;
             KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
-            FormClosing += async (s, e) => { if (_webView?.CoreWebView2 != null) await SaveCookiesAsync(); };
+            FormClosing += async (s, e) => 
+            {
+                if (_webView?.CoreWebView2 != null) await SaveCookiesAsync();
+                _gamepadListener?.Stop();
+                _gamepadListener?.Dispose();
+            };
+        }
+
+        private void OnGamepadComboDetected(object sender, EventArgs e)
+        {
+            // Ensure we're marshalling to the UI thread
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => OnGamepadComboDetected(sender, e)));
+                return;
+            }
+
+            _gamepadListener.Stop();
+            using (var overlay = new ExitOverlayForm())
+            {
+                overlay.Owner = this;
+                if (overlay.ShowDialog() == DialogResult.OK)
+                {
+                    this.Close();
+                }
+            }
+            _gamepadListener.Start();
         }
 
         private async void OnLoadAsync(object sender, EventArgs e)
         {
+            _gamepadListener.Initialize(this.Handle);
+            _gamepadListener.Start();
             _webView = new WebView2 { Dock = DockStyle.Fill, AllowExternalDrop = false };
             Controls.Add(_webView);
 
