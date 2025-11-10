@@ -43,7 +43,7 @@ namespace GameStoreLibraryManager.Common
             var label = new Label();
 
             // Form properties
-            this.Text = "Quitter ?";
+            this.Text = "Quit?";
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
             this.BackColor = Color.FromArgb(20, 20, 20);
@@ -52,7 +52,7 @@ namespace GameStoreLibraryManager.Common
             this.TopMost = true;
 
             // Label
-            label.Text = "Voulez-vous vraiment quitter ?";
+            label.Text = "Do you really want to quit?";
             label.Font = new Font("Segoe UI", 14F);
             label.ForeColor = Color.White;
             label.Dock = DockStyle.Top;
@@ -66,7 +66,7 @@ namespace GameStoreLibraryManager.Common
             panel.Padding = new Padding(10);
 
             // Quit Button
-            _quitButton.Text = "Quitter";
+            _quitButton.Text = "Quit";
             _quitButton.DialogResult = DialogResult.OK;
             _quitButton.Size = new Size(150, 40);
             _quitButton.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
@@ -77,7 +77,7 @@ namespace GameStoreLibraryManager.Common
             _quitButton.Click += (s, e) => { this.Close(); };
 
             // Cancel Button
-            _cancelButton.Text = "Annuler";
+            _cancelButton.Text = "Cancel";
             _cancelButton.DialogResult = DialogResult.Cancel;
             _cancelButton.Size = new Size(150, 40);
             _cancelButton.Font = new Font("Segoe UI", 12F);
