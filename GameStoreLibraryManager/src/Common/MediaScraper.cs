@@ -16,6 +16,7 @@ namespace GameStoreLibraryManager.Common
         private readonly HfsPlayScraper _hfsScraper;
         private readonly SteamStoreScraper _steamScraper;
         private readonly GogScraper _gogScraper;
+        private readonly SteamGridDb.SteamGridDbScraper _sgdbScraper;
         private readonly MediaDownloader _downloader;
 
         public MediaScraper(Config config, SimpleLogger logger)
@@ -25,6 +26,7 @@ namespace GameStoreLibraryManager.Common
             _hfsScraper = new HfsPlayScraper();
             _steamScraper = new SteamStoreScraper();
             _gogScraper = new GogScraper(logger);
+            _sgdbScraper = new SteamGridDb.SteamGridDbScraper(config);
             _downloader = new MediaDownloader(logger);
         }
 
@@ -39,18 +41,21 @@ namespace GameStoreLibraryManager.Common
                 var hfsPlayMedia = _config.GetString("hfsplay_scraper_media_types", "").Split(',').ToList();
                 var steamMedia = _config.GetString("steam_scraper_media_types", "").Split(',').ToList();
                 var gogMedia = _config.GetString("gog_scraper_media_types", "").Split(',').ToList();
+                var sgdbMedia = _config.GetString("steamgriddb_scraper_media_types", "").Split(',').ToList();
 
                 GameDetails hfsDetails = null;
                 GameDetails steamDetails = null;
                 GameDetails gogDetails = null;
+                GameDetails sgdbDetails = null;
+                string steamAppId = null;
 
                 // Scrape from primary sources based on config
                 if (steamMedia.Any())
                 {
-                    var steamAppId = await _steamScraper.FindGameByName(game.Name, _logger);
+                    steamAppId = await _steamScraper.FindGameByName(game.Name, _logger);
                     if (!string.IsNullOrEmpty(steamAppId))
                     {
-                        steamDetails = await _steamScraper.GetGameDetails(steamAppId);
+                        steamDetails = await _steamScraper.GetGameDetails(steamAppId, _logger);
                         if (steamDetails != null)
                         {
                             if (string.IsNullOrEmpty(gameDetails.Description)) gameDetails.Description = steamDetails.Description;
@@ -64,6 +69,50 @@ namespace GameStoreLibraryManager.Common
                         }
                     }
                 }
+                if (sgdbMedia.Any())
+                {
+                    // Check if we need to trigger automated auth
+                    if (string.IsNullOrEmpty(_config.GetString("steamgriddb_api_key", "")) && 
+                        _config.GetBoolean("steamgriddb_enable_token_generation", false))
+                    {
+                        string apiKeyPath = Path.Combine(PathManager.ApiKeyPath, "steamgriddb.apikey");
+                        if (!File.Exists(apiKeyPath))
+                        {
+                            _logger.Log("  [MediaScraper] SteamGridDB API key missing. Launching automated auth...");
+                            Auth.AuthUiLauncher.Run("steamgriddb");
+                            // Scraper will reload it automatically on next call
+                        }
+                    }
+
+                    // For SGDB, we try Steam AppID first (fetched above if steam scraper ran)
+                    if (string.IsNullOrEmpty(steamAppId) && steamMedia.Any())
+                    {
+                        // Already tried and failed if we got here
+                    }
+                    else if (string.IsNullOrEmpty(steamAppId))
+                    {
+                        // Steam scraper didn't run, check if we can get AppID anyway for SGDB
+                        steamAppId = await _steamScraper.FindGameByName(game.Name, _logger);
+                    }
+
+                    var sgdbGameId = await _sgdbScraper.FindGameIdAsync(game.Name, steamAppId, _logger);
+                    if (!string.IsNullOrEmpty(sgdbGameId))
+                    {
+                        sgdbDetails = await _sgdbScraper.GetGameDetailsAsync(sgdbGameId, _logger);
+                        if (sgdbDetails != null)
+                        {
+                            foreach (var mediaType in sgdbMedia)
+                            {
+                                if (sgdbDetails.MediaUrls.TryGetValue(mediaType, out var url))
+                                {
+                                    // SGDB has priority for the user
+                                    gameDetails.MediaUrls[mediaType] = url;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (gogMedia.Any())
                 {
                     var gogId = await _gogScraper.SearchGameIdAsync(game.Name);
@@ -105,7 +154,7 @@ namespace GameStoreLibraryManager.Common
                     if (steamDetails == null)
                     {
                         var steamAppId = await _steamScraper.FindGameByName(game.Name, _logger);
-                        if (!string.IsNullOrEmpty(steamAppId)) steamDetails = await _steamScraper.GetGameDetails(steamAppId);
+                        if (!string.IsNullOrEmpty(steamAppId)) steamDetails = await _steamScraper.GetGameDetails(steamAppId, _logger);
                     }
                     return steamDetails;
                 }
@@ -123,7 +172,17 @@ namespace GameStoreLibraryManager.Common
                     if (hfsDetails == null) hfsDetails = await ScrapeHfsPlay(game, _hfsScraper, _logger);
                     return hfsDetails;
                 }
-                var fallbackOrder = new Func<Task<GameDetails>>[] { GetSteamDetails, GetGogDetails, GetHfsDetails };
+                async Task<GameDetails> GetSgdbDetails()
+                {
+                    if (sgdbDetails == null)
+                    {
+                        var sId = await _steamScraper.FindGameByName(game.Name, _logger);
+                        var sgdbId = await _sgdbScraper.FindGameIdAsync(game.Name, sId, _logger);
+                        if (!string.IsNullOrEmpty(sgdbId)) sgdbDetails = await _sgdbScraper.GetGameDetailsAsync(sgdbId, _logger);
+                    }
+                    return sgdbDetails;
+                }
+                var fallbackOrder = new Func<Task<GameDetails>>[] { GetSgdbDetails, GetSteamDetails, GetGogDetails, GetHfsDetails };
 
                 foreach (var mediaType in allMediaTypes)
                 {

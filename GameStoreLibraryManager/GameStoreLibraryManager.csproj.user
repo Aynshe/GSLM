@@ -1,0 +1,30 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup />
+  <ItemGroup>
+    <Compile Update="src\Auth\AuthBrowserForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="src\Common\AutoClosingMessageBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="src\Common\ExitOverlayForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="src\Common\PrereqForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="src\Luna\LunaBrowserForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="src\Menu\MenuForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="src\Menu\ModernToggleSwitch.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="src\Xbox\XboxCloudGamingForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+  </ItemGroup>
+</Project>

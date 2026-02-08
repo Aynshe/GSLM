@@ -190,6 +190,9 @@ namespace GameStoreLibraryManager.Menu
 
                     var gogSetting = settings.First(s => s.Key == "gog_scraper_media_types");
                     CreateScraperCheckboxes(gogSetting, currentCategory, _mainPanel);
+
+                    var sgdbSetting = settings.First(s => s.Key == "steamgriddb_scraper_media_types");
+                    CreateScraperCheckboxes(sgdbSetting, currentCategory, _mainPanel);
                 }
                 else if (setting.Key.EndsWith("_scraper_media_types"))
                 {
@@ -379,7 +382,7 @@ namespace GameStoreLibraryManager.Menu
                     _mainPanel.Controls.Add(settingPanel);
                     _navigableControls.Add(toggle);
                 }
-                else if (setting.Key == "luna_domain")
+                else if (setting.Key == "luna_domain" || setting.Key == "steamgriddb_api_key")
                 {
                     var settingPanel = new TableLayoutPanel
                     {
@@ -401,27 +404,90 @@ namespace GameStoreLibraryManager.Menu
                         Font = new Font("Segoe UI", 10F)
                     };
 
+                    var valuePanel = new FlowLayoutPanel
+                    {
+                        FlowDirection = FlowDirection.LeftToRight,
+                        AutoSize = true,
+                        Dock = DockStyle.Fill,
+                        WrapContents = false
+                    };
+
                     var textBox = new TextBox
                     {
-                        Text = _config.GetString(setting.Key, setting.Value),
                         Tag = setting.Key,
-                        Anchor = AnchorStyles.Right,
-                        Width = 200,
-                        Font = new Font("Segoe UI", 10F)
+                        Width = (setting.Key == "steamgriddb_api_key") ? 300 : 200,
+                        Font = new Font("Segoe UI", 10F),
+                        Margin = new Padding(0, 7, 0, 0)
                     };
+
+                    // Load value from config or secure storage
+                    string currentVal = _config.GetString(setting.Key, "");
+                    if (string.IsNullOrEmpty(currentVal) && (setting.Key == "steamgriddb_api_key"))
+                    {
+                        string fileName = setting.Key.Replace("_api_key", ".apikey");
+                        string path = Path.Combine(PathManager.ApiKeyPath, fileName);
+                        if (File.Exists(path)) currentVal = SecureStore.ReadString(path);
+                    }
+                    textBox.Text = currentVal;
+
+                    valuePanel.Controls.Add(textBox);
+
+                    if (setting.Key == "steamgriddb_api_key")
+                    {
+                        var loginBtn = new Button
+                        {
+                            Text = "Login",
+                            Width = 70,
+                            Height = 26,
+                            FlatStyle = FlatStyle.Flat,
+                            BackColor = Color.FromArgb(138, 43, 226),
+                            ForeColor = Color.White,
+                            Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                            Margin = new Padding(5, 7, 0, 0)
+                        };
+                        loginBtn.FlatAppearance.BorderSize = 0;
+                        loginBtn.Click += (s, ev) =>
+                        {
+                            GameStoreLibraryManager.Auth.AuthUiLauncher.Run("steamgriddb");
+                            var keyPath = Path.Combine(PathManager.ApiKeyPath, "steamgriddb.apikey");
+                            if (File.Exists(keyPath))
+                            {
+                                textBox.Text = SecureStore.ReadString(keyPath).Trim();
+                            }
+                        };
+                        valuePanel.Controls.Add(loginBtn);
+                        _navigableControls.Add(loginBtn);
+
+                        var linkLabel = new LinkLabel
+                        {
+                            Text = "View Profile",
+                            AutoSize = true,
+                            LinkColor = Color.FromArgb(138, 43, 226),
+                            Font = new Font("Segoe UI", 9F, FontStyle.Italic),
+                            Margin = new Padding(10, 12, 0, 0),
+                            Cursor = Cursors.Hand
+                        };
+                        linkLabel.Links.Add(0, linkLabel.Text.Length, "https://www.steamgriddb.com/profile/api");
+                        linkLabel.LinkClicked += (s, ev) =>
+                        {
+                            GameStoreLibraryManager.Auth.AuthUiLauncher.Run("steamgriddb_profile");
+                        };
+                        valuePanel.Controls.Add(linkLabel);
+                    }
 
                     void OnRowEnter(object s, EventArgs ev) => SetHoverHighlight(settingPanel);
                     void OnRowLeave(object s, EventArgs ev) => ClearHoverHighlight();
                     settingPanel.MouseEnter += OnRowEnter;
                     settingPanel.MouseLeave += OnRowLeave;
                     label.MouseEnter += OnRowEnter;
+                    valuePanel.MouseEnter += OnRowEnter;
                     textBox.MouseEnter += OnRowEnter;
 
                     textBox.GotFocus += (s, ev) => SetFocusHighlight(textBox);
                     textBox.LostFocus += (s, ev) => ClearFocusHighlight();
 
                     settingPanel.Controls.Add(label, 0, 0);
-                    settingPanel.Controls.Add(textBox, 1, 0);
+                    settingPanel.Controls.Add(valuePanel, 1, 0);
                     _mainPanel.Controls.Add(settingPanel);
                     _navigableControls.Add(textBox);
                 }
@@ -699,7 +765,8 @@ namespace GameStoreLibraryManager.Menu
             {
                 { "hfsplay_scraper_media_types", new[] { "marquee", "image", "fanart", "video" } },
                 { "steam_scraper_media_types", new[] { "marquee", "image", "fanart", "video" } },
-                { "gog_scraper_media_types", new[] { "image", "thumb" } }
+                { "gog_scraper_media_types", new[] { "image", "thumb", "video" } },
+                { "steamgriddb_scraper_media_types", new[] { "marquee", "image", "fanart" } }
             };
 
             var mediaTypes = allPossibleMediaTypes.ContainsKey(setting.Key) ? allPossibleMediaTypes[setting.Key] : new string[0];
@@ -757,6 +824,25 @@ namespace GameStoreLibraryManager.Menu
         {
             var newSettings = new Dictionary<string, string>();
             CollectSettingsRecursively(_mainPanel, newSettings);
+
+            // Securely handle sensitive keys: remove from config and save to files
+            var sensitiveKeys = new[] { "steamgriddb_api_key" };
+            bool protect = _config.GetBoolean("enable_dpapi_protection", false);
+
+            foreach (var key in sensitiveKeys)
+            {
+                if (newSettings.TryGetValue(key, out var val) && !string.IsNullOrWhiteSpace(val))
+                {
+                    string fileName = key.Replace("_api_key", ".apikey");
+                    string path = System.IO.Path.Combine(PathManager.ApiKeyPath, fileName);
+                    System.IO.Directory.CreateDirectory(PathManager.ApiKeyPath);
+                    SecureStore.WriteString(path, val, protect);
+                    
+                    // Remove from dictionary so it doesn't get saved to plain-text settings.txt
+                    newSettings.Remove(key);
+                }
+            }
+
             _config.SaveSettings(newSettings);
             AutoClosingMessageBox.Show(this, "Settings saved successfully!", "Success");
             this.DialogResult = DialogResult.OK;

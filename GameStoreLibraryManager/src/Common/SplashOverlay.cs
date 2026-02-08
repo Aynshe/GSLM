@@ -12,8 +12,10 @@ namespace GameStoreLibraryManager.Common
         private Form form;
         private Label titleLabel;
         private Label percentLabel;
+        private Button stopButton;
         private int currentPercent;
         private int targetPercent;
+        public bool StopClicked { get; private set; } = false;
         private volatile bool shouldClose = false;
         private readonly string initialText;
         private readonly int initialPercent;
@@ -101,6 +103,30 @@ namespace GameStoreLibraryManager.Common
                 Font = new Font("Segoe UI", 11f, FontStyle.Regular)
             };
 
+            stopButton = new Button
+            {
+                Text = "STOP",
+                Size = new Size(120, 36),
+                FlatStyle = FlatStyle.Flat,
+                ForeColor = Color.White,
+                BackColor = Color.FromArgb(180, 0, 0),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Visible = false, // Hidden by default
+                Cursor = Cursors.Hand
+            };
+            stopButton.FlatAppearance.BorderSize = 0;
+            stopButton.Click += (s, e) =>
+            {
+                StopClicked = true;
+                stopButton.Enabled = false;
+                stopButton.Text = "STOPPING...";
+                stopButton.BackColor = Color.Gray;
+            };
+
+            // Position stop button at the bottom center
+            stopButton.Location = new Point((f.Width - stopButton.Width) / 2, f.Height - stopButton.Height - 15);
+
+            panel.Controls.Add(stopButton);
             panel.Controls.Add(percentLabel);
             panel.Controls.Add(titleLabel);
             f.Controls.Add(panel);
@@ -155,6 +181,12 @@ namespace GameStoreLibraryManager.Common
         public void Close()
         {
             shouldClose = true;
+        }
+
+        public void ShowStopButton(bool show)
+        {
+            if (form == null || form.IsDisposed) return;
+            try { form.BeginInvoke(new Action(() => { if (stopButton != null) stopButton.Visible = show; })); } catch { }
         }
     }
 }

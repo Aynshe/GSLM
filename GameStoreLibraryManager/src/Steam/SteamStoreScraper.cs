@@ -8,119 +8,252 @@ using GameStoreLibraryManager.Common;
 using System;
 using GameDetails = GameStoreLibraryManager.Common.GameDetails;
 using System.IO;
+using System.Net;
+using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
+using HtmlAgilityPack;
 
 namespace GameStoreLibraryManager.Steam
 {
     public class SteamStoreScraper
     {
         private readonly HttpClient _httpClient;
-        private const string DetailsApiUrl = "https://store.steampowered.com/api/appdetails?appids=";
-        private const string AppListApiUrl = "https://api.steampowered.com/ISteamApps/GetAppList/v2/";
-        private static List<SteamApp> _steamAppList;
+        private const string DetailsApiUrl = "https://store.steampowered.com/api/appdetails?l=english&cc=us&appids=";
+        private const string SearchApiUrl = "https://store.steampowered.com/api/storesearch/?term={0}&l=english&cc=us";
 
         public SteamStoreScraper()
         {
-            _httpClient = new HttpClient();
+            var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
+            _httpClient = new HttpClient(handler);
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            
+            // Bypass Steam age gate for Mature content
+            var baseUri = new Uri("https://store.steampowered.com");
+            handler.CookieContainer.Add(baseUri, new Cookie("wants_mature_content", "1") { Domain = "store.steampowered.com" });
+            handler.CookieContainer.Add(baseUri, new Cookie("birthtime", "189345601") { Domain = "store.steampowered.com" });
+            handler.CookieContainer.Add(baseUri, new Cookie("lastagecheckage", "1-January-1900") { Domain = "store.steampowered.com" });
         }
 
-        private async Task<List<SteamApp>> GetAppList(SimpleLogger logger)
-        {
-            if (_steamAppList != null)
-            {
-                return _steamAppList;
-            }
-
-            var cacheFile = Path.Combine(PathManager.CachePath, "steam_app_list.json");
-            if (File.Exists(cacheFile) && (DateTime.UtcNow - new FileInfo(cacheFile).LastWriteTimeUtc).TotalHours < 24)
-            {
-                var json = await File.ReadAllTextAsync(cacheFile);
-                _steamAppList = JsonConvert.DeserializeObject<AppListResponse>(json)?.AppList?.Apps;
-                if (_steamAppList != null) return _steamAppList;
-            }
-
-            logger.Log("  [Steam Scraper] Downloading full Steam app list...");
-            var response = await _httpClient.GetStringAsync(AppListApiUrl);
-            await File.WriteAllTextAsync(cacheFile, response);
-            _steamAppList = JsonConvert.DeserializeObject<AppListResponse>(response)?.AppList?.Apps;
-            return _steamAppList;
-        }
 
         public async Task<string> FindGameByName(string gameName, SimpleLogger logger)
         {
-            var appList = await GetAppList(logger);
-            if (appList == null)
+            try
             {
-                logger.Log("  [Steam Scraper] ERROR: Could not retrieve Steam app list.");
-                return null;
+                var formattedName = Uri.EscapeDataString(gameName);
+                var searchUrl = string.Format(SearchApiUrl, formattedName);
+                
+                logger.Log($"  [Steam Scraper] Searching for '{gameName}' on Steam Store...");
+                var response = await _httpClient.GetStringAsync(searchUrl);
+                var searchResult = JsonConvert.DeserializeObject<SteamSearchResult>(response);
+
+                if (searchResult != null && searchResult.Total > 0 && searchResult.Items != null)
+                {
+                    // Find the best match among results (usually the first one is best)
+                    var bestMatch = searchResult.Items
+                        .Select(item => new { Item = item, Distance = LevenshteinDistance(gameName.ToLower(), item.Name.ToLower()) })
+                        .OrderBy(x => x.Distance)
+                        .FirstOrDefault();
+
+                    if (bestMatch != null && bestMatch.Distance < 10) // Relaxed distance slightly due to targeted search
+                    {
+                        logger.Log($"  [Steam Scraper] Found match for '{gameName}': '{bestMatch.Item.Name}' (AppID: {bestMatch.Item.Id})");
+                        return bestMatch.Item.Id.ToString();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Log($"  [Steam Scraper] Search failed for '{gameName}': {ex.Message}");
             }
 
-            // Find the best match using Levenshtein distance
-            var bestMatch = appList
-                .Select(app => new { App = app, Distance = LevenshteinDistance(gameName.ToLower(), app.Name.ToLower()) })
-                .OrderBy(x => x.Distance)
-                .FirstOrDefault();
-
-            // Only accept the match if it's very close
-            if (bestMatch != null && bestMatch.Distance < 5)
-            {
-                logger.Log($"  [Steam Scraper] Found potential match for '{gameName}' on Steam: '{bestMatch.App.Name}' (AppID: {bestMatch.App.AppId})");
-                return bestMatch.App.AppId.ToString();
-            }
-
-            logger.Log($"  [Steam Scraper] No close match found for '{gameName}' on Steam.");
+        logger.Log($"  [Steam Scraper] No results found for '{gameName}' on Steam.");
             return null;
         }
 
-        public async Task<GameDetails> GetGameDetails(string appId)
+        private async Task<List<string>> ScrapeSteamStorePageForVideos(string appId, SimpleLogger logger)
+        {
+            var videos = new List<string>();
+            try
+            {
+                var url = $"https://store.steampowered.com/app/{appId}/?l=english";
+                var html = await _httpClient.GetStringAsync(url);
+                
+                // Optimized regex to find the extra assets map in the HTML
+                // Handles both double and single quotes around the attribute
+                var regex = new Regex(@"data-store_page_extra_assets_map\s*=\s*[""'](.*?)[""']");
+                var match = regex.Match(html);
+                if (match.Success)
+                {
+                    var jsonEncoded = match.Groups[1].Value;
+                    var json = WebUtility.HtmlDecode(jsonEncoded);
+                    var extraAssets = JObject.Parse(json);
+                    
+                    foreach (var property in extraAssets.Properties())
+                    {
+                        var assets = property.Value as JArray;
+                        if (assets != null)
+                        {
+                            foreach (var asset in assets)
+                            {
+                                var ext = asset["extension"]?.ToString();
+                                var urlPart = asset["urlPart"]?.ToString();
+                                if (ext == "mp4" && !string.IsNullOrEmpty(urlPart))
+                                {
+                                    // Base URL for Steam store assets
+                                    var fullUrl = $"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appId}/{urlPart}";
+                                    videos.Add(fullUrl);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // If still no videos, try a broad regex for any .mp4 URL in the page source 
+                // (sometimes trailers are in a different structure)
+                if (videos.Count == 0)
+                {
+                    var mp4Regex = new Regex(@"https://[^""' ]+?\.mp4");
+                    var mp4Matches = mp4Regex.Matches(html);
+                    foreach (Match m in mp4Matches)
+                    {
+                        if (m.Value.Contains("/apps/" + appId + "/"))
+                        {
+                            videos.Add(m.Value);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Log($"  [Steam Scraper] HTML fallback failed for AppID {appId}: {ex.Message}");
+            }
+            return videos.Distinct().ToList();
+        }
+
+        private async Task<string> GetHeaviestVideoUrl(List<string> urls, SimpleLogger logger)
+        {
+            if (urls == null || urls.Count == 0) return null;
+            if (urls.Count == 1) return urls[0];
+
+            logger.Log($"  [Steam Scraper] Comparing {urls.Count} videos to find the best quality/gameplay...");
+            string heaviestUrl = urls[0];
+            long maxContentLength = -1;
+
+            foreach (var url in urls)
+            {
+                try
+                {
+                    using (var request = new HttpRequestMessage(HttpMethod.Head, url))
+                    {
+                        var response = await _httpClient.SendAsync(request);
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var contentLength = response.Content.Headers.ContentLength ?? 0;
+                            if (contentLength > maxContentLength)
+                            {
+                                maxContentLength = contentLength;
+                                heaviestUrl = url;
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            if (maxContentLength >= 0)
+            {
+                string sizeStr = (maxContentLength > 1024 * 1024) 
+                    ? $"{(double)maxContentLength / 1024 / 1024:F1} MB" 
+                    : $"{(double)maxContentLength / 1024:F0} KB";
+                logger.Log($"  [Steam Scraper] Selected heaviest video ({sizeStr}): {heaviestUrl}");
+            }
+
+            return heaviestUrl;
+        }
+
+        public async Task<GameDetails> GetGameDetails(string appId, SimpleLogger logger)
         {
             try
             {
+                logger.Log($"  [Steam Scraper] Fetching details for AppID: {appId}");
                 var response = await _httpClient.GetStringAsync(DetailsApiUrl + appId);
                 var appDetailsDict = JsonConvert.DeserializeObject<Dictionary<string, SteamAppDetails>>(response);
 
-                if (appDetailsDict != null && appDetailsDict.TryGetValue(appId, out var appDetails) && appDetails.Success)
+                GameDetails gameDetails = null;
+
+                if (appDetailsDict != null && appDetailsDict.TryGetValue(appId, out var appDetails))
                 {
-                    var data = appDetails.Data;
-                    var gameDetails = new GameDetails
+                    if (appDetails.Success)
                     {
-                        Description = data.ShortDescription,
-                        Developer = data.Developers?.FirstOrDefault(),
-                        Publisher = data.Publishers?.FirstOrDefault(),
-                        ReleaseDate = data.ReleaseDate?.Date,
-                        MediaUrls = new Dictionary<string, string>()
-                    };
-
-                    if (!string.IsNullOrEmpty(data.HeaderImage))
-                    {
-                        gameDetails.MediaUrls["marquee"] = data.HeaderImage; // Use header as marquee/logo
-                    }
-                    if (!string.IsNullOrEmpty(data.Background))
-                    {
-                        gameDetails.MediaUrls["fanart"] = data.Background;
-                    }
-
-                    var screenshot = data.Screenshots?.FirstOrDefault();
-                    if (screenshot != null)
-                    {
-                        gameDetails.MediaUrls["image"] = screenshot.PathFull; // Use first screenshot as main image
-                    }
-
-                    var video = data.Movies?.FirstOrDefault();
-                    if (video != null)
-                    {
-                        var videoUrl = !string.IsNullOrEmpty(video.Mp4.High) ? video.Mp4.High : video.Mp4.Low;
-                        if (!string.IsNullOrEmpty(videoUrl))
+                        var data = appDetails.Data;
+                        gameDetails = new GameDetails
                         {
-                            gameDetails.MediaUrls["video"] = videoUrl;
+                            Description = data.ShortDescription,
+                            Developer = data.Developers?.FirstOrDefault(),
+                            Publisher = data.Publishers?.FirstOrDefault(),
+                            ReleaseDate = data.ReleaseDate?.Date,
+                            MediaUrls = new Dictionary<string, string>()
+                        };
+
+                        if (!string.IsNullOrEmpty(data.HeaderImage))
+                        {
+                            gameDetails.MediaUrls["marquee"] = data.HeaderImage; // Use header as marquee/logo
+                        }
+                        if (!string.IsNullOrEmpty(data.Background))
+                        {
+                            gameDetails.MediaUrls["fanart"] = data.Background;
+                        }
+
+                        var screenshot = data.Screenshots?.FirstOrDefault();
+                        if (screenshot != null)
+                        {
+                            gameDetails.MediaUrls["image"] = screenshot.PathFull; // Use first screenshot as main image
+                        }
+
+                        // Extract official trailers from API if available
+                        if (data.Movies != null)
+                        {
+                            foreach (var video in data.Movies)
+                            {
+                                // Prioritize MP4 (Max then 480) for best compatibility and quality
+                                string videoUrl = video.Mp4?.High ?? video.Mp4?.Low;
+                                
+                                // Fallback to WebM if MP4 is absolutely missing (rare for modern publisher trailers)
+                                if (string.IsNullOrEmpty(videoUrl))
+                                {
+                                    videoUrl = video.Webm?.High ?? video.Webm?.Low;
+                                }
+
+                                if (!string.IsNullOrEmpty(videoUrl))
+                                {
+                                    gameDetails.MediaUrls["video"] = videoUrl;
+                                    logger.Log($"  [Steam Scraper] Found official trailer (API): {videoUrl}");
+                                    break; // Take the first available official trailer
+                                }
+                            }
                         }
                     }
-
-                    return gameDetails;
                 }
+
+                // HTML Fallback for games without API-exposed movies (like APB Reloaded)
+                // Also run if gameDetails is still null (API failed but HTML might work)
+                if (gameDetails == null || !gameDetails.MediaUrls.ContainsKey("video"))
+                {
+                    var htmlVideos = await ScrapeSteamStorePageForVideos(appId, logger);
+                    var bestVideo = await GetHeaviestVideoUrl(htmlVideos, logger);
+                    if (!string.IsNullOrEmpty(bestVideo))
+                    {
+                        if (gameDetails == null) gameDetails = new GameDetails { MediaUrls = new Dictionary<string, string>() };
+                        gameDetails.MediaUrls["video"] = bestVideo;
+                        logger.Log($"  [Steam Scraper] Found official trailer (HTML Fallback): {bestVideo}");
+                    }
+                }
+
+                return gameDetails;
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore errors, just return null if scraping fails
+                logger.Log($"  [Steam Scraper] Failed to get details for AppID {appId}: {ex.Message}");
             }
 
             return null;

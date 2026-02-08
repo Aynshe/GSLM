@@ -111,9 +111,16 @@ namespace GameStoreLibraryManager.Auth
             }
 
             // Also try to detect from page content if a content regex is provided (e.g., Steam API key on page)
+            // CRITICAL: We only trigger this on the target redirect URL if one is provided to avoid false positives on login pages (e.g. CSRF tokens)
             if (_contentRegex != null)
             {
-                _ = TryDetectCodeFromContentAsync();
+                bool shouldTry = string.IsNullOrEmpty(_postLoginRedirectUrl) || 
+                                 (_lastNavigatedUrl != null && _lastNavigatedUrl.StartsWith(_postLoginRedirectUrl, StringComparison.OrdinalIgnoreCase));
+                
+                if (shouldTry)
+                {
+                    _ = TryDetectCodeFromContentAsync();
+                }
             }
 
             // Auto-redirect after login for providers like Epic
