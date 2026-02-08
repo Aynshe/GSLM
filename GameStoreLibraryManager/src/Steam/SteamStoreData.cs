@@ -62,8 +62,29 @@ namespace GameStoreLibraryManager.Steam
         [JsonProperty("thumbnail")]
         public string Thumbnail { get; set; }
 
+        [JsonProperty("webm")]
+        public WebMFiles Webm { get; set; }
+
         [JsonProperty("mp4")]
         public Mp4Files Mp4 { get; set; }
+
+        [JsonProperty("dash_h264")]
+        public string DashH264 { get; set; }
+
+        [JsonProperty("dash_av1")]
+        public string DashAv1 { get; set; }
+
+        [JsonProperty("hls_h264")]
+        public string HlsH264 { get; set; }
+    }
+
+    public class WebMFiles
+    {
+        [JsonProperty("480")]
+        public string Low { get; set; }
+
+        [JsonProperty("max")]
+        public string High { get; set; }
     }
 
     public class Mp4Files
@@ -87,25 +108,21 @@ namespace GameStoreLibraryManager.Steam
         public string PathFull { get; set; }
     }
 
-    // For GetAppList endpoint
-    public class SteamApp
+    public class SteamSearchResult
     {
-        [JsonProperty("appid")]
-        public int AppId { get; set; }
+        [JsonProperty("total")]
+        public int Total { get; set; }
+
+        [JsonProperty("items")]
+        public List<SteamSearchItem> Items { get; set; }
+    }
+
+    public class SteamSearchItem
+    {
+        [JsonProperty("id")]
+        public int Id { get; set; }
 
         [JsonProperty("name")]
         public string Name { get; set; }
-    }
-
-    public class AppList
-    {
-        [JsonProperty("apps")]
-        public List<SteamApp> Apps { get; set; }
-    }
-
-    public class AppListResponse
-    {
-        [JsonProperty("applist")]
-        public AppList AppList { get; set; }
     }
 }

@@ -10,7 +10,7 @@ namespace GameStoreLibraryManager.Common
     {
         private readonly HttpClient _httpClient;
         private readonly SimpleLogger _logger;
-        private static readonly List<string> SupportedExtensions = new List<string> { ".jpg", ".png", ".gif", ".mp4" };
+        private static readonly List<string> SupportedExtensions = new List<string> { ".jpg", ".png", ".gif", ".mp4", ".webm", ".mpd", ".m3u8" };
 
 
         public MediaDownloader(SimpleLogger logger)
@@ -82,6 +82,13 @@ namespace GameStoreLibraryManager.Common
                     return ".gif";
                 case "video/mp4":
                     return ".mp4";
+                case "video/webm":
+                    return ".webm";
+                case "application/dash+xml":
+                    return ".mpd";
+                case "application/x-mpegurl":
+                case "application/vnd.apple.mpegurl":
+                    return ".m3u8";
                 default:
                     return ".jpg"; // Default to jpg for unknown image types
             }

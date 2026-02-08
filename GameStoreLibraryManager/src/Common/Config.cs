@@ -59,8 +59,11 @@ namespace GameStoreLibraryManager.Common
             new ConfigOption { Key = "rescrape_incomplete_games", Value = "false", Comment = "Force metadata scraping for games that already have some, but incomplete, metadata." },
             new ConfigOption { Key = "create_gslm_shortcut", Value = "true", Comment = "Create a shortcut to GSLM settings in each store's roms directory." },
             new ConfigOption { Key = "hfsplay_scraper_media_types", Value = "", Comment = "Media types to scrape from HFSPlay, separated by commas." },
-            new ConfigOption { Key = "steam_scraper_media_types", Value = "marquee,fanart,video", Comment = "Media types to scrape from Steam, separated by commas." },
-            new ConfigOption { Key = "gog_scraper_media_types", Value = "image,thumb", Comment = "Media types to scrape from GOG, separated by commas." },
+            new ConfigOption { Key = "steam_scraper_media_types", Value = "video", Comment = "Media types to scrape from Steam, separated by commas." },
+            new ConfigOption { Key = "gog_scraper_media_types", Value = "thumb", Comment = "Media types to scrape from GOG, separated by commas." },
+            new ConfigOption { Key = "steamgriddb_scraper_media_types", Value = "marquee,fanart,image", Comment = "Media types to scrape from SteamGridDB, separated by commas." },
+            new ConfigOption { Key = "steamgriddb_api_key", Value = "", Comment = "API Key for SteamGridDB (get it at steamgriddb.com/profile/api)." },
+            new ConfigOption { Key = "steamgriddb_enable_token_generation", Value = "false", Comment = "Enable automated SteamGridDB API key retrieval via login UI." },
 
             new ConfigOption { Key = SectionHeaderKey, Value = "", Comment = "Global Options - Security" },
             new ConfigOption { Key = "enable_dpapi_protection", Value = "false", Comment = "Protect *.token and *.apikey files with Windows DPAPI (CurrentUser)." },

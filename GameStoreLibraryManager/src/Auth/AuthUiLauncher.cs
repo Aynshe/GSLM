@@ -171,6 +171,26 @@ namespace GameStoreLibraryManager.Auth
                             }
                         });
                     }
+                case "steamgriddb_profile":
+                    {
+                        var profileApiUrl = "https://www.steamgriddb.com/profile/api";
+                        var form = new AuthBrowserForm("SteamGridDB Profile", profileApiUrl, codeRegex: null, steamPasteMode: false, contentRegex: null);
+                        return (form, null); // No action on code detection
+                    }
+                case "steamgriddb":
+                    {
+                        var loginUrl = "https://www.steamgriddb.com/login";
+                        var profileApiUrl = "https://www.steamgriddb.com/profile/api";
+                        // SteamGridDB API keys are typically 32-char hex strings
+                        var contentRegex = new Regex(@"\b([0-9a-f]{32})\b", RegexOptions.IgnoreCase);
+                        var form = new AuthBrowserForm("SteamGridDB", loginUrl, codeRegex: null, steamPasteMode: false, contentRegex: contentRegex, postLoginRedirectUrl: profileApiUrl);
+                        return (form, val =>
+                        {
+                            var target = Path.Combine(PathManager.ApiKeyPath, "steamgriddb.apikey");
+                            Directory.CreateDirectory(PathManager.ApiKeyPath);
+                            File.WriteAllText(target, val.Trim());
+                        });
+                    }
                 default:
                     return (null, null);
             }

@@ -470,32 +470,49 @@ namespace GameStoreLibraryManager
             var xboxLibrary = new XboxLibrary(config, logger);
 
             logger.Log("\nFetching game libraries (parallel)...");
-            if (splash != null) splash.SetProgress(25);
+            if (splash != null)
+            {
+                splash.SetText("Fetching online game libraries...");
+                splash.SetProgress(25);
+            }
             List<LauncherGameInfo> epicGames = null, steamGames = null, gogGames = null, amazonGames = null, xboxGames = null;
             var epicTask = Task.Run(async () =>
             {
-                try { epicGames = (await epicLibrary.GetAllGamesAsync()).ToList(); }
+                try { 
+                    if (splash != null) splash.SetText("Updating Epic Games library...");
+                    epicGames = (await epicLibrary.GetAllGamesAsync()).ToList(); 
+                }
                 catch (Exception ex) { logger.Log($"[Epic] Fetch failed: {ex.Message}"); epicGames = new List<LauncherGameInfo>(); }
             });
             var steamTask = Task.Run(async () =>
             {
-                try { steamGames = (await steamLibrary.GetAllGamesAsync()).ToList(); }
+                try { 
+                    if (splash != null) splash.SetText("Updating Steam library...");
+                    steamGames = (await steamLibrary.GetAllGamesAsync()).ToList(); 
+                }
                 catch (Exception ex) { logger.Log($"[Steam] Fetch failed: {ex.Message}"); steamGames = new List<LauncherGameInfo>(); }
             });
             var gogTask = Task.Run(async () =>
             {
-                try { gogGames = (await gogLibrary.GetAllGamesAsync()).ToList(); }
+                try { 
+                    if (splash != null) splash.SetText("Updating GOG library...");
+                    gogGames = (await gogLibrary.GetAllGamesAsync()).ToList(); 
+                }
                 catch (Exception ex) { logger.Log($"[GOG] Fetch failed: {ex.Message}"); gogGames = new List<LauncherGameInfo>(); }
             });
             var amazonTask = Task.Run(async () =>
             {
-                try { amazonGames = (await amazonLibrary.GetAllGamesAsync()).ToList(); }
+                try { 
+                    if (splash != null) splash.SetText("Updating Amazon library...");
+                    amazonGames = (await amazonLibrary.GetAllGamesAsync()).ToList(); 
+                }
                 catch (Exception ex) { logger.Log($"[Amazon] Fetch failed: {ex.Message}"); amazonGames = new List<LauncherGameInfo>(); }
             });
             var xboxTask = Task.Run(async () =>
             {
                 if (config.GetBoolean("enable_xbox_library", false))
                 {
+                    if (splash != null) splash.SetText("Updating Xbox library...");
                     xboxGames = await FetchXboxGamesWithAuthRetryAsync(xboxLibrary, logger, config);
                 }
                 else
@@ -506,7 +523,11 @@ namespace GameStoreLibraryManager
             });
 
             await Task.WhenAll(epicTask, steamTask, gogTask, amazonTask, xboxTask);
-            if (splash != null) splash.SetProgress(60);
+            if (splash != null) 
+            {
+                splash.SetText("Processing libraries...");
+                splash.SetProgress(60);
+            }
 
             var allGames = new List<LauncherGameInfo>();
             allGames.AddRange(epicGames);
@@ -630,14 +651,29 @@ namespace GameStoreLibraryManager
             if (config.GetBoolean("scrape_media", false))
             {
                 logger.Log("\nScraping media...");
+                if (splash != null)
+                {
+                    splash.SetText("Preparing media scraping...");
+                    splash.ShowStopButton(true);
+                }
                 var gamelistGenerator = new GamelistGenerator(config, logger);
-                await ScrapeMediaForLibrary(epicGames, gamelistGenerator, PathManager.EpicRomsPath, logger, config);
-                await ScrapeMediaForLibrary(steamGames, gamelistGenerator, PathManager.SteamRomsPath, logger, config);
-                await ScrapeMediaForLibrary(gogGames, gamelistGenerator, PathManager.GogRomsPath, logger, config);
-                await ScrapeMediaForLibrary(amazonGames, gamelistGenerator, PathManager.AmazonRomsPath, logger, config);
-                await ScrapeMediaForLibrary(xboxGames, gamelistGenerator, PathManager.XboxRomsPath, logger, config);
+                await ScrapeMediaForLibrary(epicGames, gamelistGenerator, PathManager.EpicRomsPath, logger, config, splash, 80, 84);
+                await ScrapeMediaForLibrary(steamGames, gamelistGenerator, PathManager.SteamRomsPath, logger, config, splash, 84, 88);
+                await ScrapeMediaForLibrary(gogGames, gamelistGenerator, PathManager.GogRomsPath, logger, config, splash, 88, 92);
+                await ScrapeMediaForLibrary(amazonGames, gamelistGenerator, PathManager.AmazonRomsPath, logger, config, splash, 92, 96);
+                await ScrapeMediaForLibrary(xboxGames, gamelistGenerator, PathManager.XboxRomsPath, logger, config, splash, 96, 100);
+                
+                if (splash != null)
+                {
+                    if (splash.StopClicked)
+                        splash.SetText("Media scraping stopped by user.");
+                    else
+                        splash.SetText("Media scraping complete.");
+                    
+                    splash.ShowStopButton(false);
+                    splash.SetProgress(100);
+                }
                 logger.Log("Media scraping complete.");
-                if (splash != null) splash.SetProgress(100);
             }
             else
             {
@@ -691,10 +727,14 @@ namespace GameStoreLibraryManager
             TryCopyAsset("video");
         }
 
-        static async Task ScrapeMediaForLibrary(List<LauncherGameInfo> games, GamelistGenerator gamelistGenerator, string romsPath, SimpleLogger logger, Config config)
+        static async Task ScrapeMediaForLibrary(List<LauncherGameInfo> games, GamelistGenerator gamelistGenerator, string romsPath, SimpleLogger logger, Config config, SplashOverlay splash = null, int startPercent = 0, int endPercent = 100)
         {
             if (games == null || !games.Any()) return;
             logger.Log($"Scraping media for {games.Count} games in {romsPath}");
+            
+            var storeName = Path.GetFileName(romsPath);
+            if (splash != null) splash.SetText($"Scraping media for {storeName}...");
+
             var allGameDetails = new Dictionary<string, GameDetails>();
             var mediaScraper = new MediaScraper(config, logger);
 
@@ -732,8 +772,24 @@ namespace GameStoreLibraryManager
 
             bool forceRescrapeIncomplete = config.GetBoolean("rescrape_incomplete_games", false);
 
-            foreach (var game in games)
+            for (int i = 0; i < games.Count; i++)
             {
+                var game = games[i];
+                
+                // USER STOP CHECK
+                if (splash != null && splash.StopClicked)
+                {
+                    logger.Log($"  [Scrape] Stop requested by user. Skipping remaining {games.Count - i} games in {storeName}.");
+                    break;
+                }
+
+                if (splash != null)
+                {
+                    var currentProgress = startPercent + ((double)i / games.Count * (endPercent - startPercent));
+                    splash.SetProgress((int)currentProgress);
+                    splash.SetText($"[{storeName}] {i + 1}/{games.Count}: {game.Name}");
+                }
+
                 if (string.IsNullOrEmpty(game.Name))
                 {
                     continue;
