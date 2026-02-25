@@ -13,7 +13,7 @@ using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace GameStoreLibraryManager.Common
 {
-    public enum OcrButtonColor { Yellow, Blue }
+    public enum OcrButtonColor { Yellow, Blue, Purple }
 
     public static class OcrHelper
     {
@@ -182,6 +182,11 @@ namespace GameStoreLibraryManager.Common
                                 break;
                             case OcrButtonColor.Blue:
                                 if (h >= 200 && h <= 260 && s >= 0.50 && v >= 0.50) isMatch = true;
+                                break;
+                            case OcrButtonColor.Purple:
+                                // Purple/Pink detection (GOG buttons are often dark pink/purple/magenta)
+                                // Broadened Hue range (290-360) to catch more pinkish tones
+                                if ((h >= 290 && h <= 360) && s >= 0.30 && v >= 0.30) isMatch = true;
                                 break;
                         }
 
