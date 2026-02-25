@@ -198,7 +198,8 @@ namespace GameStoreLibraryManager.Common
 
             if (config.GetBoolean("gog_import_installed", true) && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                CleanShortcuts(PathManager.GogRomsPath, "*.lnk");
+                shortcuts.AddRange(GetShortcutsFromDirectory(PathManager.GogRomsPath, "GOG", true));
+                shortcuts.AddRange(GetShortcutsFromDirectory(Path.Combine(PathManager.GogRomsPath, "Not Installed"), "GOG", false));
             }
 
             return shortcuts;
@@ -226,25 +227,39 @@ namespace GameStoreLibraryManager.Common
             var shortcuts = new List<ExistingShortcut>();
             if (!Directory.Exists(path)) return shortcuts;
 
-            if (launcher == "GOG") return shortcuts;
-
             var files = Directory.GetFiles(path, "*.url").Concat(Directory.GetFiles(path, "*.bat"));
+            if (launcher == "GOG")
+            {
+                files = files.Concat(Directory.GetFiles(path, "*.lnk"));
+            }
 
             foreach (var file in files)
             {
                 try
                 {
-                    string content = File.ReadAllText(file);
                     string gameId = null;
                     var extension = Path.GetExtension(file).ToLower();
 
-                    string url = null;
-                    if (extension == ".url") url = GetUrlFromContent(content);
-                    else if (extension == ".bat") url = GetUrlFromBatContent(content);
+                    if (extension == ".lnk" && launcher == "GOG")
+                    {
+                        var (target, args) = Lnk.Read(file);
+                        if (!string.IsNullOrEmpty(args))
+                        {
+                            gameId = GetGameIdFromUrl(args, launcher, file);
+                        }
+                    }
+                    else
+                    {
+                        string content = File.ReadAllText(file);
+                        string url = null;
+                        if (extension == ".url") url = GetUrlFromContent(content);
+                        else if (extension == ".bat") url = GetUrlFromBatContent(content);
 
-                    if (string.IsNullOrEmpty(url)) continue;
-
-                    gameId = GetGameIdFromUrl(url, launcher, file);
+                        if (!string.IsNullOrEmpty(url))
+                        {
+                            gameId = GetGameIdFromUrl(url, launcher, file);
+                        }
+                    }
 
                     if (!string.IsNullOrEmpty(gameId))
                     {
@@ -308,6 +323,11 @@ namespace GameStoreLibraryManager.Common
             {
                 var match = Regex.Match(url, @"amazon-games://(play|install)/([^?]+)");
                 if (match.Success) gameId = match.Groups[2].Value;
+            }
+            else if (launcher == "GOG")
+            {
+                var match = Regex.Match(url, @"gameId=([a-zA-Z0-9_-]+)");
+                if (match.Success) gameId = match.Groups[1].Value;
             }
             else if (launcher == "Xbox")
             {

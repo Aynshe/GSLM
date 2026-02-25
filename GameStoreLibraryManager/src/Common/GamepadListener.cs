@@ -171,8 +171,6 @@ namespace GameStoreLibraryManager.Common
             DateTime startPressedTime = DateTime.MinValue;
             const int selectButtonIndex = 8;
             const int startButtonIndex = 9;
-            const int aButtonIndex = 0;
-            const int bButtonIndex = 1;
 
             while (!token.IsCancellationRequested)
             {

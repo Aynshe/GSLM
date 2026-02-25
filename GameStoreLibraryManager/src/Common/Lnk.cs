@@ -38,5 +38,34 @@ namespace GameStoreLibraryManager.Common
                 Console.WriteLine($"[LNK] Failed to create .lnk file at {lnkPath}. Error: {ex.Message}");
             }
         }
+
+        [SupportedOSPlatform("windows")]
+        public static (string targetPath, string arguments) Read(string lnkPath)
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !File.Exists(lnkPath))
+            {
+                return (null, null);
+            }
+
+            try
+            {
+                var type = Type.GetTypeFromProgID("WScript.Shell");
+                dynamic shell = Activator.CreateInstance(type);
+                var shortcut = shell.CreateShortcut(lnkPath);
+
+                string target = shortcut.TargetPath;
+                string args = shortcut.Arguments;
+
+                Marshal.FinalReleaseComObject(shortcut);
+                Marshal.FinalReleaseComObject(shell);
+
+                return (target, args);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[LNK] Failed to read .lnk file at {lnkPath}. Error: {ex.Message}");
+                return (null, null);
+            }
+        }
     }
 }

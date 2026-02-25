@@ -8,7 +8,7 @@ using SharpDX.XInput;
 
 namespace GameStoreLibraryManager.Menu
 {
-    public class MenuForm : Form
+    public partial class MenuForm : Form
     {
         private FlowLayoutPanel _mainPanel;
         private Button _saveButton;

@@ -19,7 +19,8 @@ namespace GameStoreLibraryManager.Gog
 {
     public static class GogInstallerAutomation
     {
-        private static readonly string[] InstallButtonNames = new[] { "Install", "Installer" };
+        private static readonly string[] InstallButtonNames = new[] { "Install", "Installer", "Instalar", "Installieren", "Installa", "Установить", "安装", "安裝", "インストール", "설치" };
+        private static readonly string[] CancelButtonNames = new[] { "Annuler", "Cancel", "Abbrechen", "Cancelar", "Annulla", "Отмена", "取消", "キャンセル", "취소" };
 
         public static bool TryInstallFirstGame(Config config, SimpleLogger logger, string gameId)
         {
@@ -92,63 +93,127 @@ namespace GameStoreLibraryManager.Gog
 
                             if (!firstClickDone)
                             {
-                                var installControl = window.FindFirstDescendant(cf => cf.ByName("Installer"));
-                                if (installControl != null && installControl.Patterns.Invoke.IsSupported)
-                                {
-                                    installControl.Patterns.Invoke.Pattern.Invoke();
-                                    logger.Log("[GogInstallAutomation] Clicked main 'Install' control.");
-                                    firstClickDone = true;
-                                }
-                            }
-                            else // firstClickDone is true, now look for the modal
-                            {
-                                var modal = window.FindAllDescendants(cf => cf.ByControlType(ControlType.Table))
-                                                  .FirstOrDefault(t => t.Name != null && t.Name.StartsWith("Installer vers"));
-                                if (modal != null)
-                                {
-                                    // Attempt to select language
-                                    var languageComboBox = modal.FindFirstDescendant(cf => cf.ByControlType(ControlType.ComboBox))?.AsComboBox();
-                                    if (languageComboBox != null)
-                                    {
-                                        var systemLang = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
-                                        string targetLanguage = "English"; // Default
-                                        var langMap = new Dictionary<string, string> {
-                                            { "fr", "Français" }, { "de", "Deutsch" }, { "es", "Español" }, { "ru", "Русский" }, { "pl", "Polski" }, { "pt", "Português" }, { "it", "Italiano" }, { "zh", "中文" }
-                                        };
-                                        if (langMap.ContainsKey(systemLang)) { targetLanguage = langMap[systemLang]; }
+                                var installControl = window.FindAllDescendants(cf => cf.ByControlType(ControlType.Button).Or(cf.ByControlType(ControlType.Text)).Or(cf.ByControlType(ControlType.ListItem)))
+                                                  .FirstOrDefault(c => InstallButtonNames.Any(name => c.Name != null && c.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
 
-                                        logger.Log($"[GogInstallAutomation] Attempting to select language: {targetLanguage}");
-                                        try
-                                        {
-                                            if (languageComboBox.Items.Any(item => item.Text.Equals(targetLanguage, StringComparison.OrdinalIgnoreCase)))
-                                            {
-                                                languageComboBox.Select(targetLanguage);
-                                                logger.Log($"[GogInstallAutomation] Selected language: {targetLanguage}");
-                                            }
-                                            else
-                                            {
-                                                logger.Log($"[GogInstallAutomation] Target language '{targetLanguage}' not found, defaulting to English.");
-                                                languageComboBox.Select("English");
-                                            }
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            logger.Log($"[GogInstallAutomation] Could not select language: {ex.Message}");
-                                        }
+                                if (installControl != null)
+                                {
+                                    if (installControl.Patterns.Invoke.IsSupported)
+                                    {
+                                        installControl.Patterns.Invoke.Pattern.Invoke();
+                                        logger.Log($"[GogInstallAutomation] Clicked main '{installControl.Name}' control.");
                                     }
                                     else
                                     {
-                                        logger.Log("[GogInstallAutomation] Language selection control not found. Proceeding with default.");
+                                        installControl.Click();
+                                        logger.Log($"[GogInstallAutomation] Mouse clicked main '{installControl.Name}' control.");
                                     }
+                                    firstClickDone = true;
+                                    logger.Log("[GogInstallAutomation] Waiting 5s for the integrated confirmation UI to appear...");
+                                    Thread.Sleep(5000); // Wait for the integrated modal to appear
+                                }
+                            }
+                            else // firstClickDone is true, now look for the confirmation UI (integrated modal)
+                            {
+                                logger.Debug("[GogInstallAutomation] Searching for confirmation UI...");
+                                
+                                List<AutomationElement> allDescendants = new List<AutomationElement>();
+                                List<AutomationElement> installCandidates = new List<AutomationElement>();
+                                List<AutomationElement> cancelCandidates = new List<AutomationElement>();
 
-                                    var modalInstallButton = modal.FindFirstDescendant(cf => cf.ByControlType(ControlType.Button).And(cf.ByName("Installer")))?.AsButton();
-                                    if (modalInstallButton != null && modalInstallButton.IsEnabled)
-                                    {
-                                        modalInstallButton.Click();
-                                        logger.Log("[GogInstallAutomation] Clicked 'Install' button in modal dialog.");
-                                        secondClickDone = true;
-                                        return false; // Stop enumeration, we are completely done.
+                                try {
+                                    allDescendants = window.FindAllDescendants().ToList();
+                                    
+                                    foreach(var el in allDescendants) {
+                                        try {
+                                            if (el.IsEnabled && !string.IsNullOrEmpty(el.Name)) {
+                                                if (InstallButtonNames.Any(name => el.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                                                    installCandidates.Add(el);
+                                                else if (CancelButtonNames.Any(name => el.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                                                    cancelCandidates.Add(el);
+                                            }
+                                        } catch { }
                                     }
+                                } catch (Exception ex) {
+                                    logger.Debug($"[GogInstallAutomation] UIA Descendants error: {ex.Message}");
+                                }
+
+                                // Calculate window center
+                                var winRect = window.BoundingRectangle;
+                                double winCenterX = winRect.Left + winRect.Width / 2.0;
+                                double winCenterY = winRect.Top + winRect.Height / 2.0;
+
+                                // Pick the 'Installer' candidate closest to the window center
+                                var installElement = installCandidates
+                                    .OrderBy(el => {
+                                        try {
+                                            var r = el.BoundingRectangle;
+                                            double cx = r.Left + r.Width / 2.0;
+                                            double cy = r.Top + r.Height / 2.0;
+                                            return Math.Sqrt(Math.Pow(cx - winCenterX, 2) + Math.Pow(cy - winCenterY, 2));
+                                        } catch { return double.MaxValue; }
+                                    }).FirstOrDefault();
+
+                                var cancelElement = cancelCandidates
+                                    .OrderBy(el => {
+                                        try {
+                                            var r = el.BoundingRectangle;
+                                            double cx = r.Left + r.Width / 2.0;
+                                            double cy = r.Top + r.Height / 2.0;
+                                            return Math.Sqrt(Math.Pow(cx - winCenterX, 2) + Math.Pow(cy - winCenterY, 2));
+                                        } catch { return double.MaxValue; }
+                                    }).FirstOrDefault();
+
+                                if (installElement != null && cancelElement != null)
+                                {
+                                    var rect = installElement.BoundingRectangle;
+                                    logger.Log($"[GogInstallAutomation] Confirmation UI detected near center (Install: '{installElement.Name}' at {rect.Left},{rect.Top}).");
+
+                                    try {
+                                        window.Focus();
+                                        Thread.Sleep(500);
+
+                                        if (!rect.IsEmpty && rect.Width > 0 && rect.Height > 0)
+                                        {
+                                            int cx = (int)(rect.Left + rect.Width / 2);
+                                            int cy = (int)(rect.Top + rect.Height / 2);
+                                            
+                                            logger.Log($"[GogInstallAutomation] Clicking confirmation at ({cx},{cy}). Window center: ({winCenterX:F0},{winCenterY:F0}).");
+                                            
+                                            // Fallback to mouse_event directly as it's most reliable for center-aligned web overlays
+                                            ClickScreen(cx, cy);
+                                            
+                                            secondClickDone = true;
+                                            return false; 
+                                        }
+                                    } catch (Exception ex) {
+                                        logger.Debug($"[GogInstallAutomation] Click attempt failed: {ex.Message}");
+                                    }
+                                }
+
+                                // Fallback to OCR if UIA did not succeed
+                                logger.Debug("[GogInstallAutomation] UIA detection failed or incomplete. Trying OCR...");
+                                string dumpDir = null;
+                                try {
+                                    dumpDir = Path.Combine(Path.GetTempPath(), "GogOCR", DateTime.UtcNow.ToString("yyyyMMdd_HHmmss"));
+                                    Directory.CreateDirectory(dumpDir);
+                                    TempCleanup.RegisterPath(dumpDir);
+                                } catch { }
+
+                                bool ocrClicked = OcrHelper.TryOcrClickInWindow(
+                                    hwnd,
+                                    InstallButtonNames,
+                                    ClickScreen,
+                                    OcrButtonColor.Purple,
+                                    msg => logger.Log($"[GogInstallAutomation][OCR] {msg}"),
+                                    dumpDir
+                                );
+
+                                if (ocrClicked)
+                                {
+                                    logger.Log("[GogInstallAutomation] Clicked 'Install' button via OCR.");
+                                    secondClickDone = true;
+                                    return false;
                                 }
                             }
                         }
@@ -164,6 +229,18 @@ namespace GameStoreLibraryManager.Gog
             }
 
             return secondClickDone;
+        }
+
+        private static void ClickScreen(int x, int y)
+        {
+            try
+            {
+                System.Windows.Forms.Cursor.Position = new System.Drawing.Point(x, y);
+                mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
+                Thread.Sleep(30);
+                mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
+            }
+            catch { }
         }
 
         private static async Task TrackInstallationProgress(Config config, SimpleLogger logger, string gameId, InstallNoticeWindow notice)
@@ -294,5 +371,10 @@ namespace GameStoreLibraryManager.Gog
 
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll")]
+        private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+        private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+        private const uint MOUSEEVENTF_LEFTUP = 0x0004;
     }
 }
